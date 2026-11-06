@@ -369,8 +369,8 @@ public final class TranslationSessionController: ObservableObject {
 
 /// Floating resizable NSPanel appearing immediately above the mouse cursor when translating.
 public final class CursorTranslationPanel: NSPanel, NSWindowDelegate {
-    public static let defaultWidth: CGFloat = 420
-    public static let minWidth: CGFloat = 340
+    public static let defaultWidth: CGFloat = 440
+    public static let minWidth: CGFloat = 380
     public static let maxWidth: CGFloat = 1400
     public static let minHeight: CGFloat = 165
     public static let maxHeight: CGFloat = 1200

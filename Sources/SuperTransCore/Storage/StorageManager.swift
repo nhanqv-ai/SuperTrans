@@ -550,7 +550,11 @@ public final class StorageManager: ObservableObject, StorageManaging, @unchecked
            let loadedProjects = try? decoder.decode([TranslationProject].self, from: pData),
            !loadedProjects.isEmpty {
             var projs = loadedProjects
-            if !projs.contains(where: { $0.id == TranslationProject.defaultProjectId }) {
+            if let defIdx = projs.firstIndex(where: { $0.id == TranslationProject.defaultProjectId }) {
+                if projs[defIdx].name == "Mặc định (Chung)" {
+                    projs[defIdx].name = "Mặc định"
+                }
+            } else {
                 projs.insert(TranslationProject.makeDefaultProject(), at: 0)
             }
             _projects = projs

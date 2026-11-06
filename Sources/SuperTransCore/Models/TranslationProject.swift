@@ -50,7 +50,7 @@ public struct TranslationProject: Identifiable, Codable, Equatable, Sendable {
     public static func makeDefaultProject() -> TranslationProject {
         TranslationProject(
             id: defaultProjectId,
-            name: "Mặc định (Chung)",
+            name: "Mặc định",
             domainNote: "",
             glossary: []
         )

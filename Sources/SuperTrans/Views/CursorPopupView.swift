@@ -43,11 +43,18 @@ public struct CursorPopupView: View {
 
     // MARK: - Header Bar
 
-    private var headerBar: some View {
-        HStack(spacing: 8) {
-            SuperTransBrandIcon(size: 16)
+    private func compactHeaderLabel(_ text: String, maxLength: Int = 15) -> String {
+        let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard trimmed.count > maxLength else { return trimmed }
+        return String(trimmed.prefix(maxLength - 1)) + "…"
+    }
 
-            // Target Language Picker Menu
+    private var headerBar: some View {
+        HStack(spacing: 6) {
+            SuperTransBrandIcon(size: 16)
+                .fixedSize()
+
+            // Target Language Picker Menu (Compact display name without redundant prefix)
             Menu {
                 ForEach(LanguageOption.supported) { option in
                     Button(action: {
@@ -64,15 +71,16 @@ public struct CursorPopupView: View {
                     }
                 }
             } label: {
-                HStack(spacing: 4) {
-                    Text("\(loc.tr(.popupTargetLanguage)): \(LanguageOption.option(for: controller.targetLanguage).displayName)")
+                HStack(spacing: 3) {
+                    Image(systemName: "globe")
+                        .font(.system(size: 9.5, weight: .semibold))
+                        .foregroundColor(.accentColor)
+                    Text(LanguageOption.option(for: controller.targetLanguage).displayName)
                         .font(.system(size: 11, weight: .semibold))
                         .foregroundColor(.primary)
-                    Image(systemName: "chevron.down")
-                        .font(.system(size: 8, weight: .bold))
-                        .foregroundColor(.secondary)
+                        .lineLimit(1)
                 }
-                .padding(.horizontal, 7)
+                .padding(.horizontal, 6)
                 .padding(.vertical, 3)
                 .background(
                     RoundedRectangle(cornerRadius: 5, style: .continuous)
@@ -81,8 +89,9 @@ public struct CursorPopupView: View {
             }
             .menuStyle(.borderlessButton)
             .fixedSize()
+            .help(loc.tr(.popupTargetLanguage))
 
-            // Project Switcher Menu
+            // Project Switcher Menu (Auto-truncated label so it never pushes right-side buttons off-screen)
             Menu {
                 ForEach(controller.storageManager.projects) { project in
                     Button(action: {
@@ -110,17 +119,14 @@ public struct CursorPopupView: View {
                     }
                 }
             } label: {
-                HStack(spacing: 4) {
+                HStack(spacing: 3) {
                     Image(systemName: "folder.fill")
                         .font(.system(size: 9, weight: .semibold))
                         .foregroundColor(.accentColor)
-                    Text(controller.storageManager.activeProject.name)
+                    Text(compactHeaderLabel(controller.storageManager.activeProject.name, maxLength: 15))
                         .font(.system(size: 10.5, weight: .medium))
                         .foregroundColor(.primary)
                         .lineLimit(1)
-                    Image(systemName: "chevron.down")
-                        .font(.system(size: 7.5, weight: .bold))
-                        .foregroundColor(.secondary)
                 }
                 .padding(.horizontal, 6)
                 .padding(.vertical, 3)
@@ -131,79 +137,84 @@ public struct CursorPopupView: View {
             }
             .menuStyle(.borderlessButton)
             .fixedSize()
-            .help(loc.languageCode == "vi" ? "Chọn Dự án (tách biệt bộ nhớ học & thuật ngữ)" : "Select Project (isolated learning memory & glossary)")
+            .help("\(loc.languageCode == "vi" ? "Dự án" : "Project"): \(controller.storageManager.activeProject.name)")
 
-            Spacer()
+            Spacer(minLength: 4)
 
-            if controller.didLearnFeedback {
-                HStack(spacing: 3) {
-                    Image(systemName: "checkmark")
-                        .font(.system(size: 9, weight: .bold))
-                    Text(loc.languageCode == "vi" ? "Đã dạy AI" : "Learned")
-                        .font(.system(size: 10, weight: .semibold))
+            // Right-side toolbar buttons locked with high layout priority so they are never clipped
+            HStack(spacing: 4) {
+                if controller.didLearnFeedback {
+                    HStack(spacing: 3) {
+                        Image(systemName: "checkmark")
+                            .font(.system(size: 9, weight: .bold))
+                        Text(loc.languageCode == "vi" ? "Đã học" : "Learned")
+                            .font(.system(size: 10, weight: .semibold))
+                    }
+                    .foregroundColor(.green)
+                    .padding(.horizontal, 5)
+                    .padding(.vertical, 2)
+                    .background(RoundedRectangle(cornerRadius: 4).fill(Color.green.opacity(0.14)))
                 }
-                .foregroundColor(.green)
-                .padding(.horizontal, 6)
-                .padding(.vertical, 2)
-                .background(RoundedRectangle(cornerRadius: 4).fill(Color.green.opacity(0.14)))
-            }
 
-            // Edit / Teach AI Button
-            if case .completed = controller.state {
+                // Edit / Teach AI Button
+                if case .completed = controller.state {
+                    Button(action: {
+                        controller.toggleEditAndTeachMode()
+                    }) {
+                        Image(systemName: controller.isEditingTranslation ? "pencil.circle.fill" : "pencil")
+                            .font(.system(size: 11, weight: .medium))
+                            .foregroundColor(controller.isEditingTranslation ? .accentColor : .secondary)
+                            .frame(width: 20, height: 20)
+                            .contentShape(Rectangle())
+                    }
+                    .buttonStyle(.plain)
+                    .help(loc.languageCode == "vi" ? "Sửa bản dịch & Dạy thuật ngữ cho Project này" : "Edit translation & teach glossary for this Project")
+                }
+
+                // Toggle Original Content Preview
+                if controller.payload != nil {
+                    Button(action: {
+                        controller.showOriginalContent.toggle()
+                        controller.onContentSizeChanged?()
+                    }) {
+                        Image(systemName: controller.showOriginalContent ? "doc.text.fill" : "doc.text")
+                            .font(.system(size: 11, weight: .medium))
+                            .foregroundColor(controller.showOriginalContent ? .accentColor : .secondary)
+                            .frame(width: 20, height: 20)
+                            .contentShape(Rectangle())
+                    }
+                    .buttonStyle(.plain)
+                    .help(controller.showOriginalContent ? loc.tr(.popupHideOriginal) : loc.tr(.popupShowOriginal))
+                }
+
+                // Pin Popup Button
                 Button(action: {
-                    controller.toggleEditAndTeachMode()
+                    controller.isPinned.toggle()
                 }) {
-                    Image(systemName: controller.isEditingTranslation ? "pencil.circle.fill" : "pencil")
+                    Image(systemName: controller.isPinned ? "pin.fill" : "pin")
                         .font(.system(size: 11, weight: .medium))
-                        .foregroundColor(controller.isEditingTranslation ? .accentColor : .secondary)
-                        .padding(4)
+                        .foregroundColor(controller.isPinned ? .accentColor : .secondary)
+                        .frame(width: 20, height: 20)
                         .contentShape(Rectangle())
                 }
                 .buttonStyle(.plain)
-                .help(loc.languageCode == "vi" ? "Sửa bản dịch & Dạy thuật ngữ cho Project này" : "Edit translation & teach glossary for this Project")
-            }
+                .help(loc.tr(.popupPinTooltip))
 
-            // Toggle Original Content Preview
-            if controller.payload != nil {
+                // Close Button
                 Button(action: {
-                    controller.showOriginalContent.toggle()
-                    controller.onContentSizeChanged?()
+                    controller.onDismissPopup?()
                 }) {
-                    Image(systemName: controller.showOriginalContent ? "doc.text.fill" : "doc.text")
+                    Image(systemName: "xmark")
                         .font(.system(size: 11, weight: .medium))
-                        .foregroundColor(controller.showOriginalContent ? .accentColor : .secondary)
-                        .padding(4)
+                        .foregroundColor(.secondary)
+                        .frame(width: 20, height: 20)
                         .contentShape(Rectangle())
                 }
                 .buttonStyle(.plain)
-                .help(controller.showOriginalContent ? loc.tr(.popupHideOriginal) : loc.tr(.popupShowOriginal))
+                .help(loc.tr(.popupCloseTooltip))
             }
-
-            // Pin Popup Button
-            Button(action: {
-                controller.isPinned.toggle()
-            }) {
-                Image(systemName: controller.isPinned ? "pin.fill" : "pin")
-                    .font(.system(size: 11, weight: .medium))
-                    .foregroundColor(controller.isPinned ? .accentColor : .secondary)
-                    .padding(4)
-                    .contentShape(Rectangle())
-            }
-            .buttonStyle(.plain)
-            .help(loc.tr(.popupPinTooltip))
-
-            // Close Button
-            Button(action: {
-                controller.onDismissPopup?()
-            }) {
-                Image(systemName: "xmark")
-                    .font(.system(size: 11, weight: .medium))
-                    .foregroundColor(.secondary)
-                    .padding(4)
-                    .contentShape(Rectangle())
-            }
-            .buttonStyle(.plain)
-            .help(loc.tr(.popupCloseTooltip))
+            .fixedSize(horizontal: true, vertical: false)
+            .layoutPriority(2)
         }
         .padding(.horizontal, 12)
         .padding(.vertical, 8)
@@ -498,13 +509,10 @@ public struct CursorPopupView: View {
                     Image(systemName: "text.bubble")
                         .font(.system(size: 10, weight: .medium))
                         .foregroundColor(.secondary)
-                    Text(currentPromptShortTitle)
+                    Text(compactHeaderLabel(currentPromptShortTitle, maxLength: 20))
                         .font(.system(size: 11, weight: .medium))
                         .foregroundColor(.primary)
                         .lineLimit(1)
-                    Image(systemName: "chevron.down")
-                        .font(.system(size: 8, weight: .bold))
-                        .foregroundColor(.secondary)
                 }
                 .padding(.horizontal, 8)
                 .padding(.vertical, 5)
@@ -514,45 +522,49 @@ public struct CursorPopupView: View {
             .fixedSize()
             .help(isVi ? "Chọn kiểu Prompt và dịch lại ngay" : "Select Prompt style and re-translate immediately")
 
-            Spacer()
+            Spacer(minLength: 4)
 
-            // Re-translate button
-            Button(action: {
-                controller.retranslate()
-            }) {
-                HStack(spacing: 4) {
-                    Image(systemName: "arrow.clockwise")
-                        .font(.system(size: 10, weight: .medium))
-                    Text(loc.tr(.popupRetranslate))
-                        .font(.system(size: 11, weight: .medium))
-                        .lineLimit(1)
+            HStack(spacing: 6) {
+                // Re-translate button
+                Button(action: {
+                    controller.retranslate()
+                }) {
+                    HStack(spacing: 4) {
+                        Image(systemName: "arrow.clockwise")
+                            .font(.system(size: 10, weight: .medium))
+                        Text(loc.tr(.popupRetranslate))
+                            .font(.system(size: 11, weight: .medium))
+                            .lineLimit(1)
+                    }
+                    .fixedSize()
+                    .padding(.horizontal, 10)
+                    .padding(.vertical, 5)
+                    .background(RoundedRectangle(cornerRadius: 5).fill(Color.secondary.opacity(0.14)))
+                    .foregroundColor(.primary)
                 }
-                .fixedSize()
-                .padding(.horizontal, 10)
-                .padding(.vertical, 5)
-                .background(RoundedRectangle(cornerRadius: 5).fill(Color.secondary.opacity(0.14)))
-                .foregroundColor(.primary)
-            }
-            .buttonStyle(.plain)
+                .buttonStyle(.plain)
 
-            // Copy button (Enter)
-            Button(action: {
-                controller.copyTranslationAndDismiss(shouldDismiss: !controller.isPinned)
-            }) {
-                HStack(spacing: 4) {
-                    Image(systemName: controller.didCopyFeedback ? "checkmark" : "doc.on.doc")
-                        .font(.system(size: 10, weight: .semibold))
-                    Text(controller.didCopyFeedback ? loc.tr(.popupCopied) : loc.tr(.popupCopyTranslation))
-                        .font(.system(size: 11, weight: .semibold))
-                        .lineLimit(1)
+                // Copy button (Enter)
+                Button(action: {
+                    controller.copyTranslationAndDismiss(shouldDismiss: !controller.isPinned)
+                }) {
+                    HStack(spacing: 4) {
+                        Image(systemName: controller.didCopyFeedback ? "checkmark" : "doc.on.doc")
+                            .font(.system(size: 10, weight: .semibold))
+                        Text(controller.didCopyFeedback ? loc.tr(.popupCopied) : loc.tr(.popupCopyTranslation))
+                            .font(.system(size: 11, weight: .semibold))
+                            .lineLimit(1)
+                    }
+                    .fixedSize()
+                    .padding(.horizontal, 12)
+                    .padding(.vertical, 5)
+                    .background(RoundedRectangle(cornerRadius: 5).fill(Color.accentColor))
+                    .foregroundColor(.white)
                 }
-                .fixedSize()
-                .padding(.horizontal, 12)
-                .padding(.vertical, 5)
-                .background(RoundedRectangle(cornerRadius: 5).fill(Color.accentColor))
-                .foregroundColor(.white)
+                .buttonStyle(.plain)
             }
-            .buttonStyle(.plain)
+            .fixedSize(horizontal: true, vertical: false)
+            .layoutPriority(2)
         }
         .padding(.horizontal, 12)
         .padding(.vertical, 7)
