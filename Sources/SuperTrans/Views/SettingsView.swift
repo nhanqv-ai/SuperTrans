@@ -544,30 +544,11 @@ public struct SettingsView: View {
 
     private var apiKeysCard: some View {
         VStack(alignment: .leading, spacing: 6) {
-            HStack(spacing: 8) {
+            HStack {
                 Text(loc.tr(.geminiAPIKeysSection))
                     .font(.system(size: 12.5, weight: .semibold))
                     .foregroundColor(.primary)
-
-                Button(action: {
-                    showingAPIKeyGuidePopover.toggle()
-                }) {
-                    HStack(spacing: 3) {
-                        Image(systemName: "questionmark.circle.fill")
-                            .font(.system(size: 11))
-                        Text(isVi ? "Hướng dẫn tạo Key" : "How to get API Key")
-                            .font(.system(size: 11, weight: .medium))
-                            .underline()
-                    }
-                    .foregroundColor(.accentColor)
-                }
-                .buttonStyle(.plain)
-                .popover(isPresented: $showingAPIKeyGuidePopover, arrowEdge: .bottom) {
-                    apiKeyGuidePopoverContent
-                }
-
                 Spacer()
-
                 Text("(\(storageManager.settings.validAPIKeys.count) keys)")
                     .font(.system(size: 11, design: .monospaced))
                     .foregroundColor(.secondary)
@@ -643,8 +624,10 @@ public struct SettingsView: View {
                         .stroke(Color(nsColor: .separatorColor), lineWidth: 0.8)
                 )
                 .id(keyRefreshTrigger)
+            }
 
-                HStack(spacing: 8) {
+            HStack(spacing: 8) {
+                if !storageManager.settings.validAPIKeys.isEmpty {
                     Button(action: testAllAPIKeys) {
                         HStack(spacing: 4) {
                             if isTestingAllKeys {
@@ -670,8 +653,25 @@ public struct SettingsView: View {
                     }
                     .buttonStyle(.bordered)
                     .controlSize(.small)
+                }
 
-                    Spacer()
+                Spacer()
+
+                Button(action: {
+                    showingAPIKeyGuidePopover.toggle()
+                }) {
+                    HStack(spacing: 4) {
+                        Image(systemName: "questionmark.circle.fill")
+                            .font(.system(size: 11))
+                        Text(isVi ? "Hướng dẫn tạo Key" : "How to get API Key")
+                            .font(.system(size: 11, weight: .medium))
+                            .underline()
+                    }
+                    .foregroundColor(.accentColor)
+                }
+                .buttonStyle(.plain)
+                .popover(isPresented: $showingAPIKeyGuidePopover, arrowEdge: .top) {
+                    apiKeyGuidePopoverContent
                 }
             }
         }
