@@ -97,6 +97,8 @@ public struct MainHistoryView: View {
                 }
                 Divider().opacity(0.6)
                 contentSection
+                Divider().opacity(0.5)
+                footerShortcutBar
             }
             .frame(width: 390, height: 600)
             .background(
@@ -521,10 +523,12 @@ public struct MainHistoryView: View {
 
     private func rowView(for item: TranslationItem, globalIndex: Int) -> some View {
         let isSelected = (selectedIndex == globalIndex)
+        let shortcutNum = globalIndex < 9 ? (globalIndex + 1) : nil
         return HistoryRowView(
             item: item,
             thumbnailURL: storageManager.getThumbnailURL(for: item),
             isSelected: isSelected,
+            shortcutNumber: shortcutNum,
             onSelect: { selected in
                 selectAndPasteItem(selected)
             },
@@ -550,6 +554,22 @@ public struct MainHistoryView: View {
                 storageManager.deleteItem(id: selected.id)
             }
         )
+    }
+
+    private var footerShortcutBar: some View {
+        let isVi = loc.languageCode == "vi"
+        return HStack(spacing: 8) {
+            Text(isVi
+                 ? "↑↓ Chọn · ⏎ Dán · ⌘1–9 Dán nhanh · ⌘O Mở Popup · ⌘⌫ Xoá"
+                 : "↑↓ Navigate · ⏎ Paste · ⌘1–9 Quick Paste · ⌘O Popup · ⌘⌫ Delete")
+                .font(.system(size: 9.5, weight: .medium))
+                .foregroundColor(.secondary)
+                .lineLimit(1)
+            Spacer()
+        }
+        .padding(.horizontal, 12)
+        .padding(.vertical, 6)
+        .background(Color.secondary.opacity(0.05))
     }
 
     private var emptyStateView: some View {
@@ -588,7 +608,11 @@ public struct MainHistoryView: View {
 
     private func resetSelection(query: String? = nil, scrollProxy: ScrollViewProxy? = nil) {
         let q = query ?? searchText
-        let (pinned, recent) = SearchEngine.partition(items: storageManager.items, query: q)
+        let activeProjId = storageManager.activeProject.id
+        let baseItems = showAllProjectsInHistory
+            ? storageManager.items
+            : storageManager.items.filter { $0.projectId == activeProjId }
+        let (pinned, recent) = SearchEngine.partition(items: baseItems, query: q)
         let maxDisplay = storageManager.settings.displayCapacity
         let cappedRecent = maxDisplay > 0 ? Array(recent.prefix(maxDisplay)) : recent
         let all = pinned + cappedRecent
@@ -623,18 +647,63 @@ public struct MainHistoryView: View {
             }
             // Up Arrow (126)
             if event.keyCode == 126 {
-                selectedIndex = ShortcutNavigator.moveUp(currentIndex: selectedIndex, totalCount: visibleItems.count)
+                let items = visibleItems
+                selectedIndex = ShortcutNavigator.moveUp(currentIndex: selectedIndex, totalCount: items.count)
+                if let idx = selectedIndex, idx >= 0 && idx < items.count {
+                    let item = items[idx]
+                    DualPreviewPanel.shared.show(for: item, thumbnailURL: storageManager.getThumbnailURL(for: item))
+                }
                 return nil
             }
             // Down Arrow (125)
             if event.keyCode == 125 {
-                selectedIndex = ShortcutNavigator.moveDown(currentIndex: selectedIndex, totalCount: visibleItems.count)
+                let items = visibleItems
+                selectedIndex = ShortcutNavigator.moveDown(currentIndex: selectedIndex, totalCount: items.count)
+                if let idx = selectedIndex, idx >= 0 && idx < items.count {
+                    let item = items[idx]
+                    DualPreviewPanel.shared.show(for: item, thumbnailURL: storageManager.getThumbnailURL(for: item))
+                }
                 return nil
             }
             // Return / Enter (36 or 76)
             if event.keyCode == 36 || event.keyCode == 76 {
                 handleReturnKey()
                 return nil
+            }
+            // Cmd + 1..9 -> Quick select & paste item 1..9
+            if flags == .command,
+               let chars = event.charactersIgnoringModifiers,
+               let num = Int(chars),
+               (1...9).contains(num) {
+                let items = visibleItems
+                let targetIdx = num - 1
+                if targetIdx < items.count {
+                    selectAndPasteItem(items[targetIdx])
+                    return nil
+                }
+            }
+            // Cmd + O -> Open selected item in Popup
+            if flags == .command && event.charactersIgnoringModifiers?.lowercased() == "o" {
+                let items = visibleItems
+                let idx = selectedIndex ?? 0
+                if idx >= 0 && idx < items.count {
+                    let targetItem = items[idx]
+                    DualPreviewPanel.shared.hide(immediate: true)
+                    onDismiss?()
+                    onOpenItemInPopup?(targetItem)
+                    return nil
+                }
+            }
+            // Cmd + Delete (keyCode 51) -> Delete selected item
+            if flags == .command && event.keyCode == 51 {
+                let items = visibleItems
+                let idx = selectedIndex ?? 0
+                if idx >= 0 && idx < items.count {
+                    let targetItem = items[idx]
+                    DualPreviewPanel.shared.hide(immediate: true)
+                    storageManager.deleteItem(id: targetItem.id)
+                    return nil
+                }
             }
             // Cmd + , -> Preferences
             if flags == .command && event.charactersIgnoringModifiers == "," {

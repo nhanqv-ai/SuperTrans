@@ -102,6 +102,18 @@ public struct DualPreviewHostView: View {
                     Text("\(LocalizationManager.shared.tr(.translatedLabel)) (\(LanguageOption.option(for: item.targetLanguage).displayName))")
                         .font(.system(size: 9, weight: .bold))
                         .foregroundColor(.accentColor)
+                    if item.isVerified {
+                        HStack(spacing: 2) {
+                            Image(systemName: "checkmark.seal.fill")
+                                .font(.system(size: 8.5))
+                            Text(LocalizationManager.shared.languageCode == "vi" ? "Mẫu chuẩn" : "Verified")
+                                .font(.system(size: 8.5, weight: .semibold))
+                        }
+                        .foregroundColor(.green)
+                        .padding(.horizontal, 4)
+                        .padding(.vertical, 1)
+                        .background(RoundedRectangle(cornerRadius: 3).fill(Color.green.opacity(0.14)))
+                    }
                     Spacer()
                     if let model = item.modelUsed, !model.isEmpty {
                         Text(model)

@@ -6,6 +6,7 @@ public struct HistoryRowView: View {
     public let item: TranslationItem
     public let thumbnailURL: URL?
     public let isSelected: Bool
+    public let shortcutNumber: Int?
     public var onSelect: ((TranslationItem) -> Void)?
     public var onCopyOriginal: ((TranslationItem) -> Void)?
     public var onOpenInPopup: ((TranslationItem) -> Void)?
@@ -21,6 +22,7 @@ public struct HistoryRowView: View {
         item: TranslationItem,
         thumbnailURL: URL? = nil,
         isSelected: Bool = false,
+        shortcutNumber: Int? = nil,
         onSelect: ((TranslationItem) -> Void)? = nil,
         onCopyOriginal: ((TranslationItem) -> Void)? = nil,
         onOpenInPopup: ((TranslationItem) -> Void)? = nil,
@@ -32,6 +34,7 @@ public struct HistoryRowView: View {
         self.item = item
         self.thumbnailURL = thumbnailURL
         self.isSelected = isSelected
+        self.shortcutNumber = shortcutNumber
         self.onSelect = onSelect
         self.onCopyOriginal = onCopyOriginal
         self.onOpenInPopup = onOpenInPopup
@@ -203,6 +206,12 @@ public struct HistoryRowView: View {
                 .buttonStyle(.plain)
                 .help(loc.tr(.deleteItem))
             } else {
+                if item.isVerified {
+                    Image(systemName: "checkmark.seal.fill")
+                        .font(.system(size: 9.5))
+                        .foregroundColor(.green)
+                        .help(loc.languageCode == "vi" ? "Câu mẫu chuẩn (AI ưu tiên học)" : "Verified Gold Example")
+                }
                 if item.isMasked {
                     Image(systemName: "eye.slash.fill")
                         .font(.system(size: 9))
@@ -212,6 +221,17 @@ public struct HistoryRowView: View {
                     Image(systemName: "pin.fill")
                         .font(.system(size: 9))
                         .foregroundColor(.accentColor)
+                }
+                if let num = shortcutNumber, (1...9).contains(num) {
+                    Text("⌘\(num)")
+                        .font(.system(size: 9.5, weight: .medium, design: .monospaced))
+                        .foregroundColor(isSelected ? .primary.opacity(0.85) : .secondary.opacity(0.65))
+                        .padding(.horizontal, 3)
+                        .padding(.vertical, 1)
+                        .background(
+                            RoundedRectangle(cornerRadius: 3, style: .continuous)
+                                .fill(Color.secondary.opacity(0.1))
+                        )
                 }
             }
         }
