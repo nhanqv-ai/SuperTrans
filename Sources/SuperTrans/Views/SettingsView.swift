@@ -557,6 +557,51 @@ public struct SettingsView: View {
                 .font(.system(size: 10.5))
                 .foregroundColor(.secondary)
 
+            // Google AI Studio Link & Concise API Key Creation Guide
+            VStack(alignment: .leading, spacing: 4) {
+                HStack(spacing: 6) {
+                    Image(systemName: "key.radiowaves.forward.fill")
+                        .font(.system(size: 10.5, weight: .semibold))
+                        .foregroundColor(.accentColor)
+                    Text(isVi ? "Cách lấy Gemini API Key miễn phí:" : "How to get a free Gemini API Key:")
+                        .font(.system(size: 11, weight: .semibold))
+                        .foregroundColor(.primary)
+                    Spacer()
+                    Button(action: {
+                        if let url = URL(string: "https://aistudio.google.com/app/apikey") {
+                            NSWorkspace.shared.open(url)
+                        }
+                    }) {
+                        HStack(spacing: 4) {
+                            Text("Google AI Studio (aistudio.google.com)")
+                                .font(.system(size: 10.5, weight: .semibold))
+                            Image(systemName: "arrow.up.forward.square")
+                                .font(.system(size: 10, weight: .semibold))
+                        }
+                        .foregroundColor(.accentColor)
+                    }
+                    .buttonStyle(.plain)
+                }
+
+                Text(isVi
+                     ? "1. Mở trang Google AI Studio và đăng nhập tài khoản Google.\n2. Bấm \"Create API key\" → Chọn \"Create API key in new project\" → Copy mã key (bắt đầu bằng AIzaSy...).\n3. Quay lại đây bấm nút \"Dán & Thêm\" bên dưới (tạo 2–5 key ở các project khác nhau để xoay vòng không lo hết lượt)."
+                     : "1. Open Google AI Studio and sign in with your Google account.\n2. Click \"Create API key\" → Choose \"Create API key in new project\" → Copy the key (starts with AIzaSy...).\n3. Click \"Paste & Add\" below (create 2–5 keys across different projects for automatic rotation).")
+                    .font(.system(size: 10.5))
+                    .foregroundColor(.secondary)
+                    .lineSpacing(2)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            .padding(8)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background(
+                RoundedRectangle(cornerRadius: 6, style: .continuous)
+                    .fill(Color.accentColor.opacity(0.08))
+            )
+            .overlay(
+                RoundedRectangle(cornerRadius: 6, style: .continuous)
+                    .stroke(Color.accentColor.opacity(0.22), lineWidth: 0.8)
+            )
+
             // Input bar with both Cmd+V support AND 1-click "Dán & Thêm" (Paste & Add) button
             HStack(spacing: 6) {
                 TextField(loc.tr(.addAPIKeyPlaceholder), text: $newAPIKeyInput)
@@ -591,7 +636,7 @@ public struct SettingsView: View {
             if storageManager.settings.validAPIKeys.isEmpty {
                 RoundedRectangle(cornerRadius: 6, style: .continuous)
                     .fill(Color(nsColor: .textBackgroundColor))
-                    .frame(height: 150)
+                    .frame(height: 110)
                     .overlay(
                         VStack(spacing: 4) {
                             Image(systemName: "key")
@@ -615,7 +660,7 @@ public struct SettingsView: View {
                     }
                     .padding(4)
                 }
-                .frame(height: 175)
+                .frame(height: 120)
                 .background(Color(nsColor: .textBackgroundColor))
                 .cornerRadius(6)
                 .overlay(
