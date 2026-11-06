@@ -976,7 +976,7 @@ public struct SettingsView: View {
                         }
                     )) {
                         ForEach(storageManager.projects) { proj in
-                            Text("📁 \(proj.name)").tag(proj.id)
+                            Text(proj.name).tag(proj.id)
                         }
                     }
                     .labelsHidden()
@@ -1020,15 +1020,17 @@ public struct SettingsView: View {
 
             // Card 2: Project Context Note & Learning Stats
             VStack(alignment: .leading, spacing: 6) {
-                HStack {
+                HStack(spacing: 10) {
                     Text(isVi ? "Ngữ cảnh riêng của Dự án \"\(activeProj.name)\"" : "Context for Project \"\(activeProj.name)\"")
                         .font(.system(size: 12, weight: .semibold))
                     Spacer()
-                    Text(isVi
-                         ? "📚 \(activeProj.glossary.count) thuật ngữ · ✨ \(verifiedCount) câu đã dạy · 📌 \(pinnedCount) câu ghim"
-                         : "📚 \(activeProj.glossary.count) terms · ✨ \(verifiedCount) taught · 📌 \(pinnedCount) pinned")
-                        .font(.system(size: 10, weight: .medium))
-                        .foregroundColor(.accentColor)
+                    HStack(spacing: 8) {
+                        Label("\(activeProj.glossary.count) \(isVi ? "thuật ngữ" : "terms")", systemImage: "book.closed")
+                        Label("\(verifiedCount) \(isVi ? "câu đã dạy" : "taught")", systemImage: "checkmark.seal")
+                        Label("\(pinnedCount) \(isVi ? "câu ghim" : "pinned")", systemImage: "pin")
+                    }
+                    .font(.system(size: 10, weight: .medium))
+                    .foregroundColor(.accentColor)
                 }
 
                 TextField(
@@ -1086,8 +1088,8 @@ public struct SettingsView: View {
                     if activeProj.glossary.isEmpty {
                         VStack(spacing: 4) {
                             Text(isVi
-                                 ? "Chưa có thuật ngữ nào. Bạn có thể thêm tại đây hoặc bấm nút ✏️ ngay trên Popup dịch."
-                                 : "No glossary terms yet. Add terms here or via the ✏️ button on the translation popup.")
+                                 ? "Chưa có thuật ngữ nào. Bạn có thể thêm tại đây hoặc bấm biểu tượng cây bút sửa trực tiếp ngay trên Popup dịch."
+                                 : "No glossary terms yet. Add terms here or via the edit icon on the translation popup.")
                                 .font(.system(size: 10.5))
                                 .foregroundColor(.secondary)
                                 .multilineTextAlignment(.center)
@@ -1451,16 +1453,7 @@ public struct SettingsView: View {
 
             // About Card
             VStack(spacing: 10) {
-                if let appIcon = NSApp?.applicationIconImage, appIcon.isValid {
-                    Image(nsImage: appIcon)
-                        .resizable()
-                        .aspectRatio(contentMode: .fit)
-                        .frame(width: 48, height: 48)
-                } else {
-                    Image(systemName: "character.bubble.fill")
-                        .font(.system(size: 32))
-                        .foregroundColor(.accentColor)
-                }
+                SuperTransBrandIcon(size: 48)
 
                 VStack(spacing: 2) {
                     Text("SuperTrans")

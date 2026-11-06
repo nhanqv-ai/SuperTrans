@@ -45,9 +45,7 @@ public struct CursorPopupView: View {
 
     private var headerBar: some View {
         HStack(spacing: 8) {
-            Image(systemName: "character.bubble.fill")
-                .font(.system(size: 13, weight: .semibold))
-                .foregroundColor(.accentColor)
+            SuperTransBrandIcon(size: 16)
 
             // Target Language Picker Menu
             Menu {
@@ -93,7 +91,8 @@ public struct CursorPopupView: View {
                         }
                     }) {
                         HStack {
-                            Text("📁 \(project.name)")
+                            Image(systemName: "folder")
+                            Text(project.name)
                             if controller.storageManager.activeProject.id == project.id {
                                 Image(systemName: "checkmark")
                             }
@@ -105,7 +104,10 @@ public struct CursorPopupView: View {
                     controller.onDismissPopup?()
                     controller.onOpenSettings?()
                 }) {
-                    Text(loc.languageCode == "vi" ? "⚙️ Quản lý Dự án & Từ điển..." : "⚙️ Manage Projects & Glossary...")
+                    HStack {
+                        Image(systemName: "gearshape")
+                        Text(loc.languageCode == "vi" ? "Quản lý Dự án & Từ điển..." : "Manage Projects & Glossary...")
+                    }
                 }
             } label: {
                 HStack(spacing: 4) {
@@ -134,12 +136,16 @@ public struct CursorPopupView: View {
             Spacer()
 
             if controller.didLearnFeedback {
-                Text(loc.languageCode == "vi" ? "✓ Đã dạy AI" : "✓ Learned")
-                    .font(.system(size: 10, weight: .semibold))
-                    .foregroundColor(.green)
-                    .padding(.horizontal, 6)
-                    .padding(.vertical, 2)
-                    .background(RoundedRectangle(cornerRadius: 4).fill(Color.green.opacity(0.14)))
+                HStack(spacing: 3) {
+                    Image(systemName: "checkmark")
+                        .font(.system(size: 9, weight: .bold))
+                    Text(loc.languageCode == "vi" ? "Đã dạy AI" : "Learned")
+                        .font(.system(size: 10, weight: .semibold))
+                }
+                .foregroundColor(.green)
+                .padding(.horizontal, 6)
+                .padding(.vertical, 2)
+                .background(RoundedRectangle(cornerRadius: 4).fill(Color.green.opacity(0.14)))
             }
 
             // Edit / Teach AI Button

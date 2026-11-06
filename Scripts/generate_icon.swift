@@ -49,6 +49,7 @@ struct IconGenerator {
         process.waitUntilExit()
     }
 
+    /// Pure vector CoreGraphics / NSBezierPath rendering (zero emoji or font text dependencies).
     private func renderIcon(pixelSize: Int) -> Data? {
         let size = NSSize(width: pixelSize, height: pixelSize)
         guard let rep = NSBitmapImageRep(
@@ -97,20 +98,41 @@ struct IconGenerator {
         let cardW = iconRect.width * 0.46
         let cardH = iconRect.height * 0.40
         let cardRadius = cardW * 0.22
+        let strokeW = max(1.2, iconRect.width * 0.048)
 
+        // Back card (top-left in screen coordinates -> higher Y in Cocoa coordinates)
         let backCardRect = NSRect(
-            x: iconRect.minX + iconRect.width * 0.14,
-            y: iconRect.minY + iconRect.height * 0.42,
+            x: iconRect.minX + iconRect.width * 0.13,
+            y: iconRect.minY + iconRect.height * 0.44,
             width: cardW,
             height: cardH
         )
         let backPath = NSBezierPath(roundedRect: backCardRect, xRadius: cardRadius, yRadius: cardRadius)
-        NSColor(calibratedWhite: 1.0, alpha: 0.88).setFill()
+        NSColor(calibratedWhite: 1.0, alpha: 0.90).setFill()
         backPath.fill()
 
+        // Pure vector "A" glyph inside back card
+        let aPath = NSBezierPath()
+        let ax = backCardRect.midX
+        let ayBot = backCardRect.minY + backCardRect.height * 0.22
+        let ayTop = backCardRect.maxY - backCardRect.height * 0.22
+        let aHalfW = backCardRect.width * 0.21
+        aPath.move(to: NSPoint(x: ax - aHalfW, y: ayBot))
+        aPath.line(to: NSPoint(x: ax, y: ayTop))
+        aPath.line(to: NSPoint(x: ax + aHalfW, y: ayBot))
+        let barY = ayBot + (ayTop - ayBot) * 0.38
+        aPath.move(to: NSPoint(x: ax - aHalfW * 0.62, y: barY))
+        aPath.line(to: NSPoint(x: ax + aHalfW * 0.62, y: barY))
+        aPath.lineWidth = strokeW
+        aPath.lineCapStyle = .round
+        aPath.lineJoinStyle = .round
+        NSColor(calibratedRed: 0.10, green: 0.42, blue: 0.85, alpha: 1.0).setStroke()
+        aPath.stroke()
+
+        // Front card (bottom-right)
         let frontCardRect = NSRect(
-            x: iconRect.minX + iconRect.width * 0.40,
-            y: iconRect.minY + iconRect.height * 0.18,
+            x: iconRect.minX + iconRect.width * 0.41,
+            y: iconRect.minY + iconRect.height * 0.16,
             width: cardW,
             height: cardH
         )
@@ -118,43 +140,20 @@ struct IconGenerator {
         NSColor(calibratedWhite: 1.0, alpha: 0.98).setFill()
         frontPath.fill()
 
-        let fontSize = cardH * 0.56
-        let paragraph = NSMutableParagraphStyle()
-        paragraph.alignment = .center
-
-        let backAttrs: [NSAttributedString.Key: Any] = [
-            .font: NSFont.systemFont(ofSize: fontSize, weight: .bold),
-            .foregroundColor: NSColor(calibratedRed: 0.10, green: 0.42, blue: 0.85, alpha: 1.0),
-            .paragraphStyle: paragraph
-        ]
-        let aStr = NSString(string: "A")
-        let aSize = aStr.size(withAttributes: backAttrs)
-        aStr.draw(
-            in: NSRect(
-                x: backCardRect.minX,
-                y: backCardRect.midY - aSize.height / 2,
-                width: backCardRect.width,
-                height: aSize.height
-            ),
-            withAttributes: backAttrs
-        )
-
-        let frontAttrs: [NSAttributedString.Key: Any] = [
-            .font: NSFont.systemFont(ofSize: fontSize * 0.88, weight: .bold),
-            .foregroundColor: NSColor(calibratedRed: 0.30, green: 0.20, blue: 0.80, alpha: 1.0),
-            .paragraphStyle: paragraph
-        ]
-        let vStr = NSString(string: "VI")
-        let vSize = vStr.size(withAttributes: frontAttrs)
-        vStr.draw(
-            in: NSRect(
-                x: frontCardRect.minX,
-                y: frontCardRect.midY - vSize.height / 2,
-                width: frontCardRect.width,
-                height: vSize.height
-            ),
-            withAttributes: frontAttrs
-        )
+        // Pure vector translation waveform / lines + exchange chevron inside front card
+        let linesPath = NSBezierPath()
+        let lx1 = frontCardRect.minX + frontCardRect.width * 0.22
+        let lx2 = frontCardRect.maxX - frontCardRect.width * 0.22
+        let lyTop = frontCardRect.minY + frontCardRect.height * 0.64
+        let lyBot = frontCardRect.minY + frontCardRect.height * 0.36
+        linesPath.move(to: NSPoint(x: lx1, y: lyTop))
+        linesPath.line(to: NSPoint(x: lx2, y: lyTop))
+        linesPath.move(to: NSPoint(x: lx1, y: lyBot))
+        linesPath.line(to: NSPoint(x: lx1 + (lx2 - lx1) * 0.66, y: lyBot))
+        linesPath.lineWidth = strokeW
+        linesPath.lineCapStyle = .round
+        NSColor(calibratedRed: 0.30, green: 0.20, blue: 0.80, alpha: 1.0).setStroke()
+        linesPath.stroke()
 
         NSGraphicsContext.restoreGraphicsState()
         NSGraphicsContext.restoreGraphicsState()

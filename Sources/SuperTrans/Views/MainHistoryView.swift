@@ -155,9 +155,7 @@ public struct MainHistoryView: View {
 
     private var headerBar: some View {
         HStack(spacing: 8) {
-            Image(systemName: "character.bubble.fill")
-                .font(.system(size: 14, weight: .semibold))
-                .foregroundColor(.accentColor)
+            SuperTransBrandIcon(size: 16)
 
             Text("SuperTrans")
                 .font(.system(size: 13, weight: .semibold))
@@ -290,7 +288,8 @@ public struct MainHistoryView: View {
                         storageManager.selectActiveProject(id: project.id)
                     }) {
                         HStack {
-                            Text("📁 \(project.name)")
+                            Image(systemName: "folder")
+                            Text(project.name)
                             if activeProject.id == project.id {
                                 Image(systemName: "checkmark")
                             }
@@ -301,7 +300,10 @@ public struct MainHistoryView: View {
                 Button(action: {
                     onOpenSettings?()
                 }) {
-                    Text(isVi ? "⚙️ Quản lý Dự án & Từ điển..." : "⚙️ Manage Projects & Glossary...")
+                    HStack {
+                        Image(systemName: "gearshape")
+                        Text(isVi ? "Quản lý Dự án & Từ điển..." : "Manage Projects & Glossary...")
+                    }
                 }
             } label: {
                 HStack(spacing: 4) {

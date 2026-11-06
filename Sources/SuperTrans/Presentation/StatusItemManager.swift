@@ -48,13 +48,7 @@ public final class StatusItemManager: NSObject, NSPopoverDelegate, NSMenuDelegat
 
     private func configureStatusItem() {
         guard let button = statusItem.button else { return }
-        if let img = NSImage(systemSymbolName: "character.bubble.fill", accessibilityDescription: "SuperTrans") {
-            let config = NSImage.SymbolConfiguration(pointSize: 14, weight: .medium)
-            button.image = img.withSymbolConfiguration(config) ?? img
-            button.image?.isTemplate = true
-        } else {
-            button.title = "ST"
-        }
+        button.image = SuperTransBrandIcon.makeMenuBarTemplateImage(pointSize: 16)
         button.target = self
         button.action = #selector(statusItemButtonClicked(_:))
         button.sendAction(on: [.leftMouseUp, .rightMouseUp])
