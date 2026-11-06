@@ -325,11 +325,7 @@ public final class CursorTranslationPanel: NSPanel {
             mouseLoc: anchorMouseLocation,
             panelSize: newSize
         )
-        NSAnimationContext.runAnimationGroup { ctx in
-            ctx.duration = 0.14
-            ctx.timingFunction = CAMediaTimingFunction(name: .easeOut)
-            self.animator().setFrame(targetFrame, display: true)
-        }
+        self.setFrame(targetFrame, display: true)
         self.invalidateShadow()
     }
 

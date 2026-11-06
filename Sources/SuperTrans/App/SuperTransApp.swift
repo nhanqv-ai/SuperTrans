@@ -1,11 +1,14 @@
+import SwiftUI
 import AppKit
+import SuperTransCore
 
 @main
-public struct SuperTransApp {
-    public static func main() {
-        let app = NSApplication.shared
-        let delegate = AppDelegate()
-        app.delegate = delegate
-        app.run()
+struct SuperTransApp: App {
+    @NSApplicationDelegateAdaptor(AppDelegate.self) var appDelegate
+
+    var body: some Scene {
+        Settings {
+            EmptyView()
+        }
     }
 }

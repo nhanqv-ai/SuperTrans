@@ -8,6 +8,7 @@ public final class SettingsWindowController: NSWindowController, NSWindowDelegat
     public let storageManager: StorageManager
     public let hotKeyManager: any HotKeyManaging
     public var onPresentationDismissalRequested: (() -> Void)?
+    private var hasBeenCentered: Bool = false
 
     public init(
         storageManager: StorageManager,
@@ -19,23 +20,20 @@ public final class SettingsWindowController: NSWindowController, NSWindowDelegat
         self.onPresentationDismissalRequested = onPresentationDismissalRequested
 
         let window = NSWindow(
-            contentRect: NSRect(x: 0, y: 0, width: 640, height: 540),
-            styleMask: [.titled, .closable, .miniaturizable],
+            contentRect: NSRect(x: 0, y: 0, width: 510, height: 500),
+            styleMask: [.titled, .closable],
             backing: .buffered,
             defer: false
         )
         window.title = "SuperTrans Settings"
-        window.center()
         window.isReleasedWhenClosed = false
+        window.level = .normal
+        window.setContentSize(NSSize(width: 510, height: 500))
+        window.setFrameAutosaveName("SuperTransSettingsWindow")
 
         super.init(window: window)
         window.delegate = self
-
-        let settingsView = SettingsView(
-            storageManager: storageManager,
-            hotKeyManager: hotKeyManager
-        )
-        window.contentViewController = NSHostingController(rootView: settingsView)
+        setupContentView()
     }
 
     @available(*, unavailable)
@@ -43,14 +41,40 @@ public final class SettingsWindowController: NSWindowController, NSWindowDelegat
         fatalError("init(coder:) has not been implemented")
     }
 
+    public func setupContentView() {
+        guard let window = self.window else { return }
+        let settingsView = SettingsView(
+            storageManager: storageManager,
+            hotKeyManager: hotKeyManager,
+            onDismiss: { [weak self] in
+                self?.close()
+            }
+        )
+        let hostingController = NSHostingController(rootView: settingsView)
+        hostingController.preferredContentSize = NSSize(width: 510, height: 500)
+        window.contentViewController = hostingController
+    }
+
     public func showSettings() {
+        guard Thread.isMainThread else {
+            DispatchQueue.main.async { [weak self] in
+                self?.showSettings()
+            }
+            return
+        }
+
         onPresentationDismissalRequested?()
         guard let window = self.window else { return }
-        window.title = LocalizationManager.shared.tr(.preferences)
-        if !window.isVisible {
+        window.title = "SuperTrans — " + LocalizationManager.shared.tr(.preferences)
+        if !hasBeenCentered && !window.isVisible {
             window.center()
+            hasBeenCentered = true
         }
-        window.makeKeyAndOrderFront(nil)
         NSApp.activate(ignoringOtherApps: true)
+        window.makeKeyAndOrderFront(nil)
+    }
+
+    public func windowWillClose(_ notification: Notification) {
+        setupContentView()
     }
 }

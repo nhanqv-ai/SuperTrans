@@ -135,9 +135,7 @@ public struct MainHistoryView: View {
             .onChange(of: selectedIndex) { newIdx in
                 if let idx = newIdx, idx >= 0 && idx < visibleItems.count {
                     let targetID = visibleItems[idx].id
-                    withAnimation(.easeInOut(duration: 0.14)) {
-                        proxy.scrollTo(targetID, anchor: .center)
-                    }
+                    proxy.scrollTo(targetID, anchor: .center)
                 }
             }
         }

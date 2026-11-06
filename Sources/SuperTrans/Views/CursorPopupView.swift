@@ -81,9 +81,7 @@ public struct CursorPopupView: View {
             // Toggle Original Content Preview
             if controller.payload != nil {
                 Button(action: {
-                    withAnimation(.easeInOut(duration: 0.14)) {
-                        controller.showOriginalContent.toggle()
-                    }
+                    controller.showOriginalContent.toggle()
                     controller.onContentSizeChanged?()
                 }) {
                     Image(systemName: controller.showOriginalContent ? "doc.text.fill" : "doc.text")

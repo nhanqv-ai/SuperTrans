@@ -21,12 +21,12 @@ public struct AppSettings: Codable, Equatable, Sendable {
     public var language: String
     public var ignoredApps: [IgnoredApp]
 
-    public static let defaultModel: String = "gemini-2.5-flash"
+    public static let defaultModel: String = "gemini-3.1-flash-lite"
     public static let presetModels: [String] = [
-        "gemini-2.5-flash",
-        "gemini-2.5-flash-lite",
-        "gemini-2.0-flash",
-        "gemini-2.5-pro"
+        "gemini-3.1-flash-lite",
+        "gemini-3.5-flash-lite",
+        "gemini-3-flash-preview",
+        "gemini-3.5-flash"
     ]
 
     public static let defaultSystemPrompt: String = """

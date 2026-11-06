@@ -83,6 +83,13 @@ public final class StorageManager: ObservableObject, StorageManaging, @unchecked
         if let data = try? Data(contentsOf: settingsURL),
            let s = try? dec.decode(AppSettings.self, from: data) {
             loadedSettings = s
+            // Migrate legacy default model (gemini-2.5-flash / gemini-2.0-flash) to gemini-3.1-flash-lite
+            if loadedSettings.selectedModel == "gemini-2.5-flash" ||
+               loadedSettings.selectedModel == "gemini-2.5-flash-lite" ||
+               loadedSettings.selectedModel == "gemini-2.0-flash" ||
+               loadedSettings.selectedModel == "gemini-2.5-pro" {
+                loadedSettings.selectedModel = AppSettings.defaultModel
+            }
         }
 
         self._settings = loadedSettings

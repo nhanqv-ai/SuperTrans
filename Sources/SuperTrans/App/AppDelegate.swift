@@ -14,6 +14,7 @@ public final class AppDelegate: NSObject, NSApplicationDelegate {
 
     public func applicationDidFinishLaunching(_ notification: Notification) {
         NSApplication.shared.setActivationPolicy(.accessory)
+        installStandardEditMenuIfNeeded()
 
         storageManager = StorageManager()
         pasteboardMonitor = PasteboardMonitor.shared
@@ -187,6 +188,39 @@ public final class AppDelegate: NSObject, NSApplicationDelegate {
     public func openSettings() {
         statusItemManager?.dismissAll()
         settingsWindowController?.showSettings()
+    }
+
+    private func installStandardEditMenuIfNeeded() {
+        let mainMenu = NSApp.mainMenu ?? NSMenu()
+
+        // Ensure Edit menu with Cut/Copy/Paste/SelectAll exists so Cmd+V works in all TextFields in LSUIElement mode
+        let hasPasteItem = mainMenu.items.contains { topItem in
+            topItem.submenu?.items.contains(where: { $0.keyEquivalent == "v" }) == true
+        }
+        guard !hasPasteItem else { return }
+
+        if mainMenu.items.isEmpty {
+            let appMenuItem = NSMenuItem()
+            let appMenu = NSMenu(title: "SuperTrans")
+            appMenu.addItem(withTitle: "Quit SuperTrans", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q")
+            appMenuItem.submenu = appMenu
+            mainMenu.addItem(appMenuItem)
+        }
+
+        let editMenuItem = NSMenuItem()
+        let editMenu = NSMenu(title: "Edit")
+        editMenu.addItem(withTitle: "Undo", action: Selector(("undo:")), keyEquivalent: "z")
+        let redoItem = editMenu.addItem(withTitle: "Redo", action: Selector(("redo:")), keyEquivalent: "Z")
+        redoItem.keyEquivalentModifierMask = [.command, .shift]
+        editMenu.addItem(.separator())
+        editMenu.addItem(withTitle: "Cut", action: #selector(NSText.cut(_:)), keyEquivalent: "x")
+        editMenu.addItem(withTitle: "Copy", action: #selector(NSText.copy(_:)), keyEquivalent: "c")
+        editMenu.addItem(withTitle: "Paste", action: #selector(NSText.paste(_:)), keyEquivalent: "v")
+        editMenu.addItem(withTitle: "Select All", action: #selector(NSText.selectAll(_:)), keyEquivalent: "a")
+        editMenuItem.submenu = editMenu
+        mainMenu.addItem(editMenuItem)
+
+        NSApp.mainMenu = mainMenu
     }
 
     public func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool {

@@ -76,9 +76,7 @@ public struct HistoryRowView: View {
         )
         .clipShape(RoundedRectangle(cornerRadius: 5, style: .continuous))
         .onHover { hovering in
-            withAnimation(.easeInOut(duration: 0.12)) {
-                isHovered = hovering
-            }
+            isHovered = hovering
             if hovering {
                 DualPreviewPanel.shared.show(for: item, thumbnailURL: thumbnailURL)
             } else {

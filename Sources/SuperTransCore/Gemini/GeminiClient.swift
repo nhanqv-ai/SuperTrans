@@ -277,6 +277,17 @@ public final class GeminiClient: GeminiTranslating, @unchecked Sendable {
             throw GeminiError.invalidURL
         }
 
+        var genConfig: [String: Any] = [
+            "temperature": 0.2
+        ]
+        // Disable thinking overhead on non-lite Gemini models for instant translation response
+        let lowerModel = model.lowercased()
+        if !lowerModel.contains("lite") && (lowerModel.contains("gemini-3") || lowerModel.contains("gemini-2.5")) {
+            genConfig["thinkingConfig"] = [
+                "thinkingBudget": 0
+            ]
+        }
+
         var requestBody: [String: Any] = [
             "contents": [
                 [
@@ -284,9 +295,7 @@ public final class GeminiClient: GeminiTranslating, @unchecked Sendable {
                     "parts": parts
                 ]
             ],
-            "generationConfig": [
-                "temperature": 0.2
-            ]
+            "generationConfig": genConfig
         ]
 
         if let sys = systemInstruction, !sys.isEmpty {
@@ -341,6 +350,9 @@ public final class GeminiClient: GeminiTranslating, @unchecked Sendable {
 
         var combined = ""
         for part in parts {
+            if let isThought = part["thought"] as? Bool, isThought {
+                continue
+            }
             if let text = part["text"] as? String {
                 combined += text
             }
