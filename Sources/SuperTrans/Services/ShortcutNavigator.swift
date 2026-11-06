@@ -18,12 +18,4 @@ public enum ShortcutNavigator {
         }
         return current + 1
     }
-
-    public static func shortcutIndex(from event: NSEvent) -> Int? {
-        guard let chars = event.charactersIgnoringModifiers, chars.count == 1,
-              let digit = Int(chars), (1...9).contains(digit) else {
-            return nil
-        }
-        return digit - 1
-    }
 }

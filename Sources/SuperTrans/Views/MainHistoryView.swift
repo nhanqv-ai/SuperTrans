@@ -430,11 +430,9 @@ public struct MainHistoryView: View {
     }
 
     private func rowView(for item: TranslationItem, globalIndex: Int) -> some View {
-        let shortcutNum = globalIndex < 9 ? (globalIndex + 1) : nil
         let isSelected = (selectedIndex == globalIndex)
         return HistoryRowView(
             item: item,
-            shortcutIndex: shortcutNum,
             thumbnailURL: storageManager.getThumbnailURL(for: item),
             isSelected: isSelected,
             onSelect: { selected in
@@ -557,13 +555,6 @@ public struct MainHistoryView: View {
             if flags == .command && event.charactersIgnoringModifiers?.lowercased() == "q" {
                 NSApp.terminate(nil)
                 return nil
-            }
-            // Cmd + 1..9 or bare 1..9 when search text is empty
-            if flags == .command || (flags.isEmpty && searchText.isEmpty) {
-                if let idx = ShortcutNavigator.shortcutIndex(from: event), idx < visibleItems.count {
-                    selectAndPasteItem(visibleItems[idx])
-                    return nil
-                }
             }
             return event
         }

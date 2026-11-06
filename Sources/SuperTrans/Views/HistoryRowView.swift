@@ -4,7 +4,6 @@ import SuperTransCore
 
 public struct HistoryRowView: View {
     public let item: TranslationItem
-    public let shortcutIndex: Int?
     public let thumbnailURL: URL?
     public let isSelected: Bool
     public var onSelect: ((TranslationItem) -> Void)?
@@ -20,7 +19,6 @@ public struct HistoryRowView: View {
 
     public init(
         item: TranslationItem,
-        shortcutIndex: Int? = nil,
         thumbnailURL: URL? = nil,
         isSelected: Bool = false,
         onSelect: ((TranslationItem) -> Void)? = nil,
@@ -32,7 +30,6 @@ public struct HistoryRowView: View {
         onDelete: ((TranslationItem) -> Void)? = nil
     ) {
         self.item = item
-        self.shortcutIndex = shortcutIndex
         self.thumbnailURL = thumbnailURL
         self.isSelected = isSelected
         self.onSelect = onSelect
@@ -216,18 +213,6 @@ public struct HistoryRowView: View {
                         .font(.system(size: 9))
                         .foregroundColor(.accentColor)
                 }
-            }
-
-            if let idx = shortcutIndex, (1...9).contains(idx) {
-                Text("\(idx)")
-                    .font(.system(size: 10, weight: .medium, design: .monospaced))
-                    .foregroundColor(isSelected ? .primary : .secondary)
-                    .padding(.horizontal, 4)
-                    .padding(.vertical, 1)
-                    .background(
-                        RoundedRectangle(cornerRadius: 3, style: .continuous)
-                            .fill(Color.secondary.opacity(isSelected ? 0.24 : 0.12))
-                    )
             }
         }
     }
