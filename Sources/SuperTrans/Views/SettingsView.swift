@@ -65,6 +65,9 @@ public struct SettingsView: View {
     @State private var newProjectNameInput: String = ""
     @State private var newGlossarySourceInput: String = ""
     @State private var newGlossaryTargetInput: String = ""
+    @State private var glossarySearchQuery: String = ""
+    @State private var showingRenameProjectPopover: Bool = false
+    @State private var renameProjectDraft: String = ""
     @State private var showingAPIKeyGuidePopover: Bool = false
     @State private var newCustomPromptNameInput: String = ""
     @State private var selectedInspectorPromptId: String? = nil
@@ -119,7 +122,8 @@ public struct SettingsView: View {
 
     private var topTabBar: some View {
         HStack(spacing: 8) {
-            ForEach(SettingsTab.allCases) { tab in
+            ForEach(Array(SettingsTab.allCases.enumerated()), id: \.element.id) { idx, tab in
+                let shortcutChar = Character("\(idx + 1)")
                 Button(action: {
                     stopShortcutRecording()
                     selectedTab = tab
@@ -142,6 +146,8 @@ public struct SettingsView: View {
                     .contentShape(Rectangle())
                 }
                 .buttonStyle(.plain)
+                .keyboardShortcut(KeyEquivalent(shortcutChar), modifiers: .command)
+                .help("\(tab.title) (⌘\(idx + 1))")
             }
         }
         .padding(.horizontal, 12)
@@ -1427,6 +1433,51 @@ public struct SettingsView: View {
                     .pickerStyle(.menu)
                     .frame(maxWidth: .infinity, alignment: .leading)
 
+                    Button(action: {
+                        renameProjectDraft = activeProj.name
+                        showingRenameProjectPopover = true
+                    }) {
+                        Image(systemName: "pencil")
+                            .font(.system(size: 11))
+                    }
+                    .buttonStyle(.bordered)
+                    .controlSize(.small)
+                    .help(isVi ? "Đổi tên dự án đang chọn" : "Rename active project")
+                    .popover(isPresented: $showingRenameProjectPopover, arrowEdge: .bottom) {
+                        VStack(alignment: .leading, spacing: 8) {
+                            Text(isVi ? "Đổi tên Dự án" : "Rename Project")
+                                .font(.system(size: 12, weight: .semibold))
+                            HStack(spacing: 6) {
+                                TextField(isVi ? "Tên dự án..." : "Project name...", text: $renameProjectDraft)
+                                    .textFieldStyle(.roundedBorder)
+                                    .font(.system(size: 11.5))
+                                    .frame(width: 180)
+                                    .onSubmit {
+                                        let trimmed = renameProjectDraft.trimmingCharacters(in: .whitespacesAndNewlines)
+                                        if !trimmed.isEmpty {
+                                            var updated = activeProj
+                                            updated.name = trimmed
+                                            storageManager.updateProject(updated)
+                                        }
+                                        showingRenameProjectPopover = false
+                                    }
+                                Button(isVi ? "Lưu" : "Save") {
+                                    let trimmed = renameProjectDraft.trimmingCharacters(in: .whitespacesAndNewlines)
+                                    if !trimmed.isEmpty {
+                                        var updated = activeProj
+                                        updated.name = trimmed
+                                        storageManager.updateProject(updated)
+                                    }
+                                    showingRenameProjectPopover = false
+                                }
+                                .buttonStyle(.borderedProminent)
+                                .controlSize(.small)
+                                .disabled(renameProjectDraft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                            }
+                        }
+                        .padding(10)
+                    }
+
                     if activeProj.id != TranslationProject.defaultProjectId {
                         Button(role: .destructive) {
                             storageManager.deleteProject(id: activeProj.id)
@@ -1497,8 +1548,37 @@ public struct SettingsView: View {
 
             // Card 3: Project Glossary (Từ điển Thuật ngữ của Dự án)
             VStack(alignment: .leading, spacing: 6) {
-                Text(isVi ? "Từ điển Thuật ngữ của Dự án (AI luôn tuân thủ khi dịch)" : "Project Glossary (Strictly enforced during translation)")
-                    .font(.system(size: 12, weight: .semibold))
+                HStack(spacing: 8) {
+                    Text(isVi ? "Từ điển Thuật ngữ của Dự án (AI luôn tuân thủ)" : "Project Glossary (Strictly enforced)")
+                        .font(.system(size: 12, weight: .semibold))
+                    Spacer()
+                    if activeProj.glossary.count >= 3 {
+                        HStack(spacing: 4) {
+                            Image(systemName: "magnifyingglass")
+                                .font(.system(size: 9.5))
+                                .foregroundColor(.secondary)
+                            TextField(isVi ? "Lọc thuật ngữ..." : "Filter terms...", text: $glossarySearchQuery)
+                                .textFieldStyle(.plain)
+                                .font(.system(size: 10.5))
+                                .frame(width: 115)
+                            if !glossarySearchQuery.isEmpty {
+                                Button(action: { glossarySearchQuery = "" }) {
+                                    Image(systemName: "xmark.circle.fill")
+                                        .font(.system(size: 9.5))
+                                        .foregroundColor(.secondary)
+                                }
+                                .buttonStyle(.plain)
+                            }
+                        }
+                        .padding(.horizontal, 6)
+                        .padding(.vertical, 2)
+                        .background(RoundedRectangle(cornerRadius: 4).fill(Color(nsColor: .textBackgroundColor)))
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 4)
+                                .stroke(Color(nsColor: .separatorColor), lineWidth: 0.6)
+                        )
+                    }
+                }
 
                 HStack(spacing: 6) {
                     TextField(isVi ? "Từ / Cụm từ gốc (VD: 代表)" : "Source term", text: $newGlossarySourceInput)
@@ -1516,7 +1596,7 @@ public struct SettingsView: View {
                             addGlossaryEntryFromInput()
                         }
 
-                    Button(isVi ? "Thêm" : "Add") {
+                    Button(isVi ? "Lưu" : "Save") {
                         addGlossaryEntryFromInput()
                     }
                     .buttonStyle(.borderedProminent)
@@ -1527,6 +1607,14 @@ public struct SettingsView: View {
                         newGlossaryTargetInput.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
                     )
                 }
+
+                let filteredGlossary: [GlossaryEntry] = {
+                    let q = glossarySearchQuery.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+                    guard !q.isEmpty else { return activeProj.glossary }
+                    return activeProj.glossary.filter {
+                        $0.sourceTerm.lowercased().contains(q) || $0.targetTerm.lowercased().contains(q)
+                    }
+                }()
 
                 ScrollView {
                     if activeProj.glossary.isEmpty {
@@ -1540,9 +1628,15 @@ public struct SettingsView: View {
                                 .padding(.vertical, 18)
                         }
                         .frame(maxWidth: .infinity)
+                    } else if filteredGlossary.isEmpty {
+                        Text(isVi ? "Không tìm thấy thuật ngữ phù hợp." : "No matching glossary terms.")
+                            .font(.system(size: 10.5))
+                            .foregroundColor(.secondary)
+                            .frame(maxWidth: .infinity)
+                            .padding(.vertical, 18)
                     } else {
                         LazyVStack(spacing: 4) {
-                            ForEach(activeProj.glossary) { entry in
+                            ForEach(filteredGlossary) { entry in
                                 HStack(spacing: 8) {
                                     Text(entry.sourceTerm)
                                         .font(.system(size: 11, weight: .semibold))
@@ -1561,6 +1655,17 @@ public struct SettingsView: View {
                                     Spacer()
 
                                     Button(action: {
+                                        newGlossarySourceInput = entry.sourceTerm
+                                        newGlossaryTargetInput = entry.targetTerm
+                                    }) {
+                                        Image(systemName: "pencil")
+                                            .font(.system(size: 10))
+                                            .foregroundColor(.secondary)
+                                    }
+                                    .buttonStyle(.plain)
+                                    .help(isVi ? "Sửa thuật ngữ này" : "Edit this glossary term")
+
+                                    Button(action: {
                                         storageManager.removeGlossaryEntry(projectId: activeProj.id, entryId: entry.id)
                                     }) {
                                         Image(systemName: "trash")
@@ -1568,6 +1673,7 @@ public struct SettingsView: View {
                                             .foregroundColor(.red.opacity(0.8))
                                     }
                                     .buttonStyle(.plain)
+                                    .help(isVi ? "Xoá thuật ngữ này" : "Delete this glossary term")
                                 }
                                 .padding(.horizontal, 8)
                                 .padding(.vertical, 4)
@@ -1791,6 +1897,20 @@ public struct SettingsView: View {
                 .font(.system(size: 10, design: .monospaced))
                 .foregroundColor(.secondary)
                 .lineLimit(1)
+
+            Button(action: {
+                storageManager.removeIgnoredApp(bundleIdentifier: app.bundleIdentifier.isEmpty ? app.name : app.bundleIdentifier)
+                if selectedIgnoredAppId == app.id {
+                    selectedIgnoredAppId = nil
+                }
+            }) {
+                Image(systemName: "trash")
+                    .font(.system(size: 10))
+                    .foregroundColor(.red.opacity(0.8))
+                    .frame(width: 18, height: 18)
+            }
+            .buttonStyle(.borderless)
+            .help(isVi ? "Bỏ chặn ứng dụng này" : "Remove this ignored app")
         }
         .padding(.horizontal, 8)
         .padding(.vertical, 4)
