@@ -179,7 +179,8 @@ public final class AppDelegate: NSObject, NSApplicationDelegate {
             sessionController.startTranslation(
                 payload: payload,
                 overrideTargetLanguage: item.targetLanguage,
-                existingItemId: item.id
+                existingItemId: item.id,
+                forceRefresh: true
             )
             cursorTranslationPanel.presentAboveCursor(at: mouseAnchor)
         case .image:

@@ -4,6 +4,8 @@ import Combine
 public protocol StorageManaging: AnyObject, ObservableObject {
     var items: [TranslationItem] { get }
     var settings: AppSettings { get set }
+    func findCachedTranslation(sourceText: String, targetLanguage: String) -> TranslationItem?
+    func touchItem(id: UUID)
     func addTranslation(item: TranslationItem, imageData: Data?, thumbData: Data?)
     func updateTranslation(id: UUID, translatedText: String, targetLanguage: String, modelUsed: String?)
     func togglePin(id: UUID)
@@ -113,6 +115,32 @@ public final class StorageManager: ObservableObject, StorageManaging, @unchecked
         try? FileManager.default.createDirectory(at: baseDirectory, withIntermediateDirectories: true)
         try? FileManager.default.createDirectory(at: imagesDirectory, withIntermediateDirectories: true)
         try? FileManager.default.createDirectory(at: thumbnailsDirectory, withIntermediateDirectories: true)
+    }
+
+    public func findCachedTranslation(sourceText: String, targetLanguage: String) -> TranslationItem? {
+        let normalizedSource = sourceText.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !normalizedSource.isEmpty else { return nil }
+        lock.lock()
+        defer { lock.unlock() }
+        return _items.first { item in
+            guard item.contentType == .text,
+                  item.targetLanguage == targetLanguage,
+                  let existingSource = item.sourceText?.trimmingCharacters(in: .whitespacesAndNewlines) else {
+                return false
+            }
+            return existingSource == normalizedSource && !item.translatedText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+        }
+    }
+
+    public func touchItem(id: UUID) {
+        lock.lock()
+        defer { lock.unlock() }
+        guard let idx = _items.firstIndex(where: { $0.id == id }) else { return }
+        var item = _items.remove(at: idx)
+        item.createdAt = Date()
+        _items.insert(item, at: 0)
+        saveMetadata()
+        notifyChange()
     }
 
     public func addTranslation(item: TranslationItem, imageData: Data?, thumbData: Data?) {

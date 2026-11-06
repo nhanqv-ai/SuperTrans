@@ -126,6 +126,12 @@ struct SuperTransTestRunner {
         assertEqual(storage.items.count, 1, "Added 1 translation item")
         assertEqual(storage.items.first?.translatedText, "Xin chào", "Stored translated text matches")
 
+        // Verify History Cache lookup (exact & whitespace-trimmed match + targetLanguage match)
+        let cachedHit = storage.findCachedTranslation(sourceText: "  Hello \n", targetLanguage: "vi")
+        assertEqual(cachedHit?.translatedText, "Xin chào", "findCachedTranslation returns existing translation for same text & language")
+        let cachedMissLang = storage.findCachedTranslation(sourceText: "Hello", targetLanguage: "ja")
+        assertTrue(cachedMissLang == nil, "findCachedTranslation returns nil for different target language")
+
         storage.togglePin(id: item1.id)
         assertTrue(storage.items.first?.isPinned == true, "Toggled pin state to true")
 

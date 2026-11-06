@@ -49,7 +49,8 @@ public final class TranslationSessionController: ObservableObject {
     public func startTranslation(
         payload: ClipboardPayload,
         overrideTargetLanguage: String? = nil,
-        existingItemId: UUID? = nil
+        existingItemId: UUID? = nil,
+        forceRefresh: Bool = false
     ) {
         activeTask?.cancel()
         self.payload = payload
@@ -57,6 +58,21 @@ public final class TranslationSessionController: ObservableObject {
         self.didCopyFeedback = false
         let lang = overrideTargetLanguage ?? storageManager.settings.targetLanguage
         self.targetLanguage = lang
+
+        // Check History Cache first when not forcing a re-translation
+        if !forceRefresh, case .text(let sourceText) = payload,
+           let cachedItem = storageManager.findCachedTranslation(sourceText: sourceText, targetLanguage: lang) {
+            self.currentHistoryItemId = cachedItem.id
+            self.storageManager.touchItem(id: cachedItem.id)
+            self.state = .completed(
+                translatedText: cachedItem.translatedText,
+                modelUsed: cachedItem.modelUsed ?? storageManager.settings.selectedModel,
+                keyMasked: "History Cache"
+            )
+            self.onContentSizeChanged?()
+            return
+        }
+
         self.state = .translating
         self.onContentSizeChanged?()
 
@@ -151,10 +167,14 @@ public final class TranslationSessionController: ObservableObject {
     public func retranslate(newTargetLanguage: String? = nil) {
         guard let payload = payload else { return }
         let lang = newTargetLanguage ?? targetLanguage
+        // If user clicked "Dịch lại" (newTargetLanguage == nil), force a fresh API request.
+        // If user switched target language in the dropdown, check cache first for that language.
+        let shouldForceRefresh = (newTargetLanguage == nil)
         startTranslation(
             payload: payload,
             overrideTargetLanguage: lang,
-            existingItemId: currentHistoryItemId
+            existingItemId: shouldForceRefresh ? currentHistoryItemId : nil,
+            forceRefresh: shouldForceRefresh
         )
     }
 
