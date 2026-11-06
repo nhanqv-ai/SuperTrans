@@ -89,7 +89,7 @@
 
 ### Hướng dẫn cài đặt ứng dụng
 
-1. Tải bản phát hành mới nhất tại mục **[Releases](https://github.com/nhanqv-ai/SuperTrans/releases/latest)** (`SuperTrans-v1.0.4.zip`).
+1. Tải bản phát hành mới nhất tại mục **[Releases](https://github.com/nhanqv-ai/SuperTrans/releases/latest)** (`SuperTrans-v1.0.5.zip`).
 2. Giải nén và kéo `SuperTrans.app` vào thư mục `/Applications`.
 3. Mở `SuperTrans.app`, nhấn vào icon trên Menu Bar -> **Cài đặt... (`Cmd + ,`)** -> tab **Gemini AI** và nhấn **"Dán & Thêm"** để thêm Gemini API Key.
 
