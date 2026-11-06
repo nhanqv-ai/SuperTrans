@@ -6,6 +6,7 @@ import SuperTransCore
 
 public struct SettingsView: View {
     @ObservedObject public var storageManager: StorageManager
+    @ObservedObject public var updateManager: UpdateManager = .shared
     @ObservedObject private var loc = LocalizationManager.shared
     public let hotKeyManager: any HotKeyManaging
     public let autoPasteService: any AutoPasteServicing
@@ -55,11 +56,13 @@ public struct SettingsView: View {
 
     public init(
         storageManager: StorageManager,
+        updateManager: UpdateManager = .shared,
         hotKeyManager: any HotKeyManaging = HotKeyManager.shared,
         autoPasteService: any AutoPasteServicing = AutoPasteService.shared,
         onDismiss: (() -> Void)? = nil
     ) {
         self.storageManager = storageManager
+        self.updateManager = updateManager
         self.hotKeyManager = hotKeyManager
         self.autoPasteService = autoPasteService
         self.onDismiss = onDismiss
@@ -282,6 +285,17 @@ public struct SettingsView: View {
                         s.launchAtLogin = val
                         storageManager.settings = s
                         LaunchAtLoginManager.shared.setEnabled(val)
+                    }
+                ))
+                .toggleStyle(.checkbox)
+                .font(.system(size: 11.5))
+
+                Toggle(isVi ? "Tự động kiểm tra bản cập nhật" : "Automatically check for updates", isOn: Binding(
+                    get: { storageManager.settings.automaticallyCheckForUpdates },
+                    set: { val in
+                        var s = storageManager.settings
+                        s.automaticallyCheckForUpdates = val
+                        storageManager.settings = s
                     }
                 ))
                 .toggleStyle(.checkbox)
@@ -1101,9 +1115,28 @@ public struct SettingsView: View {
                 VStack(spacing: 2) {
                     Text("SuperTrans")
                         .font(.system(size: 15, weight: .bold))
-                    Text("Version 1.0.1 (com.nhanqv.supertrans)")
+                    Text("Version \(updateManager.currentVersion) (com.nhanqv.supertrans)")
                         .font(.system(size: 11))
                         .foregroundColor(.secondary)
+                }
+
+                // Check for Updates Section (SuperClip style)
+                VStack(spacing: 8) {
+                    Button(action: {
+                        updateManager.checkForUpdates(userInitiated: true)
+                    }) {
+                        HStack(spacing: 6) {
+                            Image(systemName: "arrow.triangle.2.circlepath")
+                                .font(.system(size: 11, weight: .medium))
+                            Text(isVi ? "Kiểm tra cập nhật" : "Check for Updates")
+                                .font(.system(size: 11.5, weight: .medium))
+                        }
+                    }
+                    .buttonStyle(.bordered)
+                    .controlSize(.small)
+                    .disabled(updateManager.isBusy)
+
+                    updateStatusView
                 }
 
                 Divider()
@@ -1133,6 +1166,114 @@ public struct SettingsView: View {
             .padding(12)
             .frame(maxWidth: .infinity)
             .background(cardBackground)
+        }
+    }
+
+    @ViewBuilder
+    private var updateStatusView: some View {
+        switch updateManager.status {
+        case .idle:
+            EmptyView()
+        case .checking:
+            HStack(spacing: 6) {
+                ProgressView()
+                    .controlSize(.small)
+                Text(isVi ? "Đang kiểm tra bản cập nhật..." : "Checking for updates...")
+                    .font(.system(size: 11))
+                    .foregroundColor(.secondary)
+            }
+        case .upToDate(let currentVer):
+            HStack(spacing: 6) {
+                Image(systemName: "checkmark.circle.fill")
+                    .foregroundColor(.green)
+                    .font(.system(size: 12))
+                Text(isVi ? "Bạn đang dùng phiên bản mới nhất (\(currentVer))" : "You're up to date (\(currentVer))")
+                    .font(.system(size: 11, weight: .medium))
+                    .foregroundColor(.primary)
+            }
+        case .updateAvailable(let release):
+            VStack(spacing: 6) {
+                HStack(spacing: 6) {
+                    Image(systemName: "arrow.down.circle.fill")
+                        .foregroundColor(.accentColor)
+                        .font(.system(size: 12))
+                    Text(isVi ? "Có phiên bản mới: \(release.versionString)" : "New version available: \(release.versionString)")
+                        .font(.system(size: 11.5, weight: .semibold))
+                        .foregroundColor(.primary)
+                }
+
+                if release.zipAssetURL != nil {
+                    Button(action: {
+                        updateManager.startDownloadAndInstall(release: release)
+                    }) {
+                        HStack(spacing: 4) {
+                            Image(systemName: "arrow.down.to.line")
+                                .font(.system(size: 10, weight: .semibold))
+                            Text(isVi ? "Cập nhật ngay" : "Update Now")
+                                .font(.system(size: 11, weight: .medium))
+                        }
+                    }
+                    .buttonStyle(.borderedProminent)
+                    .controlSize(.small)
+                } else {
+                    Button(action: {
+                        NSWorkspace.shared.open(release.htmlURL)
+                    }) {
+                        Text(isVi ? "Tải từ GitHub" : "Download from GitHub")
+                            .font(.system(size: 11, weight: .medium))
+                    }
+                    .buttonStyle(.borderedProminent)
+                    .controlSize(.small)
+                }
+            }
+            .padding(8)
+            .background(Color.accentColor.opacity(0.08))
+            .cornerRadius(6)
+        case .downloading(let progress):
+            HStack(spacing: 6) {
+                ProgressView()
+                    .controlSize(.small)
+                Text(isVi ? "Đang tải về và chuẩn bị cài đặt (\(Int(progress * 100))%)..." : "Downloading & preparing update (\(Int(progress * 100))%)...")
+                    .font(.system(size: 11, weight: .medium))
+                    .foregroundColor(.secondary)
+            }
+        case .readyToRestart(let release):
+            VStack(spacing: 6) {
+                HStack(spacing: 6) {
+                    Image(systemName: "checkmark.seal.fill")
+                        .foregroundColor(.green)
+                        .font(.system(size: 12))
+                    Text(isVi ? "Đã tải xong \(release.tagName) — Khởi động lại để hoàn tất" : "\(release.tagName) ready — Restart to apply")
+                        .font(.system(size: 11, weight: .medium))
+                        .foregroundColor(.primary)
+                }
+
+                Button(action: {
+                    updateManager.restartApp()
+                }) {
+                    HStack(spacing: 4) {
+                        Image(systemName: "arrow.clockwise")
+                            .font(.system(size: 10, weight: .semibold))
+                        Text(isVi ? "Khởi động lại" : "Restart Now")
+                            .font(.system(size: 11, weight: .semibold))
+                    }
+                }
+                .buttonStyle(.borderedProminent)
+                .controlSize(.small)
+            }
+            .padding(8)
+            .background(Color.green.opacity(0.1))
+            .cornerRadius(6)
+        case .error(let message):
+            HStack(spacing: 6) {
+                Image(systemName: "exclamationmark.triangle.fill")
+                    .foregroundColor(.orange)
+                    .font(.system(size: 12))
+                Text(message)
+                    .font(.system(size: 11))
+                    .foregroundColor(.secondary)
+                    .multilineTextAlignment(.center)
+            }
         }
     }
 

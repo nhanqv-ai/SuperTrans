@@ -17,6 +17,7 @@ public final class StatusItemManager: NSObject, NSPopoverDelegate, NSMenuDelegat
     public var onTranslateShortcutRequested: (() -> Void)?
     public var onOpenSettingsRequested: (() -> Void)?
     public var onClearHistoryRequested: (() -> Void)?
+    public var onCheckForUpdatesRequested: (() -> Void)?
 
     private var settingsObserver: AnyCancellable?
     private var lastPopoverCloseTimestamp: TimeInterval = 0
@@ -164,6 +165,15 @@ public final class StatusItemManager: NSObject, NSPopoverDelegate, NSMenuDelegat
         prefsItem.image = NSImage(systemSymbolName: "gearshape", accessibilityDescription: nil)
         menu.addItem(prefsItem)
 
+        let checkUpdateItem = NSMenuItem(
+            title: loc.languageCode == "vi" ? "Kiểm tra bản cập nhật..." : "Check for Updates...",
+            action: #selector(checkForUpdatesClicked(_:)),
+            keyEquivalent: ""
+        )
+        checkUpdateItem.target = self
+        checkUpdateItem.image = NSImage(systemSymbolName: "arrow.triangle.2.circlepath", accessibilityDescription: nil)
+        menu.addItem(checkUpdateItem)
+
         let clearItem = NSMenuItem(
             title: loc.tr(.clearUnpinnedHistory),
             action: #selector(clearHistoryClicked(_:)),
@@ -257,6 +267,10 @@ public final class StatusItemManager: NSObject, NSPopoverDelegate, NSMenuDelegat
 
     @objc private func clearHistoryClicked(_ sender: Any?) {
         onClearHistoryRequested?()
+    }
+
+    @objc private func checkForUpdatesClicked(_ sender: Any?) {
+        onCheckForUpdatesRequested?()
     }
 
     @objc private func quitClicked(_ sender: Any?) {

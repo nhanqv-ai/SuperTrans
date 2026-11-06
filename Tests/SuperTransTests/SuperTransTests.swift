@@ -36,6 +36,7 @@ struct SuperTransTestRunner {
         testHotKeyFormatting()
         testCursorPopupPositioning()
         testCircularShortcutNavigator()
+        testUpdateManagerVersionAndReleaseParsing()
 
         print("--------------------------------------------------")
         print("SuperTrans Tests Completed: \(passed) passed, \(failed) failed.")
@@ -197,5 +198,37 @@ struct SuperTransTestRunner {
     static func testCircularShortcutNavigator() {
         assertEqual(ShortcutNavigator.moveUp(currentIndex: 0, totalCount: 5), 4, "Up from 0 wraps to last item (4)")
         assertEqual(ShortcutNavigator.moveDown(currentIndex: 4, totalCount: 5), 0, "Down from last item (4) wraps to 0")
+    }
+
+    static func testUpdateManagerVersionAndReleaseParsing() {
+        let v101 = SemanticVersion("v1.0.1")
+        let v102 = SemanticVersion("1.0.2")
+        let v110 = SemanticVersion("v1.1.0")
+        assertTrue(v101 < v102, "1.0.1 < 1.0.2")
+        assertTrue(v102 < v110, "1.0.2 < 1.1.0")
+        assertTrue(UpdateManager.isVersion("v1.0.2", greaterThan: "1.0.1"), "isVersion v1.0.2 > 1.0.1")
+
+        let releaseJSON = """
+        {
+          "tag_name": "v1.0.2",
+          "html_url": "https://github.com/nhanqv-ai/SuperTrans/releases/tag/v1.0.2",
+          "body": "Added automatic & manual update checker",
+          "assets": [
+            {
+              "name": "SuperTrans-v1.0.2.zip",
+              "browser_download_url": "https://github.com/nhanqv-ai/SuperTrans/releases/download/v1.0.2/SuperTrans-v1.0.2.zip"
+            }
+          ]
+        }
+        """.data(using: .utf8)!
+
+        let parsed = try? UpdateManager.parseRelease(from: releaseJSON)
+        assertTrue(parsed != nil, "UpdateManager.parseRelease parses GitHub release JSON")
+        assertEqual(parsed?.versionString, "1.0.2", "Parsed version string is 1.0.2")
+        assertEqual(
+            parsed?.zipAssetURL?.absoluteString,
+            "https://github.com/nhanqv-ai/SuperTrans/releases/download/v1.0.2/SuperTrans-v1.0.2.zip",
+            "Parsed zip asset download URL"
+        )
     }
 }

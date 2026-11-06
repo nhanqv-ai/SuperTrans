@@ -122,6 +122,21 @@ public final class AppDelegate: NSObject, NSApplicationDelegate {
         statusItemManager.onClearHistoryRequested = { [weak self] in
             self?.storageManager.clearUnpinnedHistory()
         }
+
+        statusItemManager.onCheckForUpdatesRequested = { [weak self] in
+            UpdateManager.shared.checkForUpdates(userInitiated: true) { result in
+                if case .success(let release) = result, release != nil {
+                    self?.statusItemManager.showPopover()
+                } else {
+                    self?.openSettings()
+                }
+            }
+        }
+
+        // Initialize Automatic Update Checker (Startup + Daily 24h)
+        UpdateManager.shared.storageManager = storageManager
+        UpdateManager.shared.checkOnStartupIfNeeded(storageManager: storageManager)
+        UpdateManager.shared.startPeriodicCheck(interval: 86400, storageManager: storageManager)
     }
 
     public func triggerTranslateSelectionOrClipboard() {
@@ -228,6 +243,7 @@ public final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     public func applicationWillTerminate(_ notification: Notification) {
+        UpdateManager.shared.stopPeriodicCheck()
         pasteboardMonitor?.stopPolling()
         statusItemManager?.hotKeyManager.unregisterAll()
         statusItemManager?.dismissAll()

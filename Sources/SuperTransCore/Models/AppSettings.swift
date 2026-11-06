@@ -20,6 +20,8 @@ public struct AppSettings: Codable, Equatable, Sendable {
     public var launchAtLogin: Bool
     public var language: String
     public var ignoredApps: [IgnoredApp]
+    public var automaticallyCheckForUpdates: Bool
+    public var lastUpdateCheckDate: Date?
 
     public static let defaultModel: String = "gemini-3.1-flash-lite"
     public static let presetModels: [String] = [
@@ -74,7 +76,9 @@ Rules:
         maxThumbnailPixelSize: Int = AppSettings.defaultMaxThumbnailPixelSize,
         launchAtLogin: Bool = false,
         language: String = AppSettings.defaultLanguage,
-        ignoredApps: [IgnoredApp] = []
+        ignoredApps: [IgnoredApp] = [],
+        automaticallyCheckForUpdates: Bool = true,
+        lastUpdateCheckDate: Date? = nil
     ) {
         self.apiKeys = apiKeys
         let trimmedModel = selectedModel.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -97,6 +101,8 @@ Rules:
         self.launchAtLogin = launchAtLogin
         self.language = language
         self.ignoredApps = ignoredApps
+        self.automaticallyCheckForUpdates = automaticallyCheckForUpdates
+        self.lastUpdateCheckDate = lastUpdateCheckDate
     }
 
     public init(from decoder: Decoder) throws {
@@ -126,5 +132,7 @@ Rules:
         self.launchAtLogin = try c.decodeIfPresent(Bool.self, forKey: .launchAtLogin) ?? false
         self.language = try c.decodeIfPresent(String.self, forKey: .language) ?? AppSettings.defaultLanguage
         self.ignoredApps = try c.decodeIfPresent([IgnoredApp].self, forKey: .ignoredApps) ?? []
+        self.automaticallyCheckForUpdates = try c.decodeIfPresent(Bool.self, forKey: .automaticallyCheckForUpdates) ?? true
+        self.lastUpdateCheckDate = try c.decodeIfPresent(Date.self, forKey: .lastUpdateCheckDate)
     }
 }

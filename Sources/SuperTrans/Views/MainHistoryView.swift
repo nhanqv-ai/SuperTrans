@@ -26,6 +26,7 @@ public struct WindowAccessor: NSViewRepresentable {
 
 public struct MainHistoryView: View {
     @ObservedObject public var storageManager: StorageManager
+    @ObservedObject public var updateManager: UpdateManager = .shared
     @ObservedObject private var loc = LocalizationManager.shared
 
     public let pasteboardWriter: any PasteboardWriting
@@ -85,6 +86,9 @@ public struct MainHistoryView: View {
             VStack(spacing: 0) {
                 headerBar
                 searchBarSection
+                if updateManager.shouldShowBanner {
+                    updateBannerView
+                }
                 Divider().opacity(0.6)
                 contentSection
             }
@@ -231,11 +235,20 @@ public struct MainHistoryView: View {
             Button(action: {
                 onOpenSettings?()
             }) {
-                Image(systemName: "gearshape")
-                    .font(.system(size: 11, weight: .medium))
-                    .foregroundColor(.secondary)
-                    .padding(4)
-                    .contentShape(Rectangle())
+                ZStack(alignment: .topTrailing) {
+                    Image(systemName: "gearshape")
+                        .font(.system(size: 11, weight: .medium))
+                        .foregroundColor(.secondary)
+                        .padding(4)
+
+                    if updateManager.hasPendingUpdate {
+                        Circle()
+                            .fill(Color.accentColor)
+                            .frame(width: 6, height: 6)
+                            .offset(x: 2, y: -2)
+                    }
+                }
+                .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
             .help(loc.tr(.preferencesTooltip))
@@ -268,6 +281,102 @@ public struct MainHistoryView: View {
         )
         .padding(.horizontal, 12)
         .padding(.bottom, 6)
+    }
+
+    // MARK: - Update Banner View
+
+    public var updateBannerView: some View {
+        let isVi = loc.languageCode == "vi"
+        return HStack(spacing: 8) {
+            Image(systemName: "arrow.triangle.2.circlepath.circle.fill")
+                .foregroundColor(.accentColor)
+                .font(.system(size: 13))
+
+            VStack(alignment: .leading, spacing: 1) {
+                switch updateManager.status {
+                case .readyToRestart:
+                    Text(isVi ? "Bản cập nhật đã sẵn sàng khởi động lại" : "Update ready to restart")
+                        .font(.system(size: 11, weight: .medium))
+                        .foregroundColor(.primary)
+                case .downloading:
+                    Text(isVi ? "Đang tải bản cập nhật..." : "Downloading update...")
+                        .font(.system(size: 11, weight: .medium))
+                        .foregroundColor(.primary)
+                case .updateAvailable(let release):
+                    let tag = release.tagName.lowercased().hasPrefix("v") ? release.tagName : "v\(release.tagName)"
+                    Text(isVi ? "Đã có bản cập nhật \(tag)" : "Update \(tag) available")
+                        .font(.system(size: 11, weight: .medium))
+                        .foregroundColor(.primary)
+                case .error(let msg):
+                    Text(msg)
+                        .font(.system(size: 11, weight: .medium))
+                        .foregroundColor(.red)
+                        .lineLimit(1)
+                default:
+                    EmptyView()
+                }
+            }
+
+            Spacer()
+
+            switch updateManager.status {
+            case .readyToRestart:
+                Button(action: { updateManager.dismissBannerForSession() }) {
+                    Text(isVi ? "Để sau" : "Later")
+                        .font(.system(size: 10))
+                }
+                .buttonStyle(.plain)
+                .foregroundColor(.secondary)
+
+                Button(action: { updateManager.restartApp() }) {
+                    Text(isVi ? "Khởi động lại" : "Restart")
+                        .font(.system(size: 10, weight: .semibold))
+                }
+                .buttonStyle(.borderedProminent)
+                .controlSize(.small)
+
+            case .downloading:
+                ProgressView()
+                    .controlSize(.small)
+                    .scaleEffect(0.6)
+
+            case .updateAvailable(let release):
+                Button(action: { NSWorkspace.shared.open(release.htmlURL) }) {
+                    Text(isVi ? "Chi tiết" : "Notes")
+                        .font(.system(size: 10))
+                }
+                .buttonStyle(.plain)
+                .foregroundColor(.secondary)
+
+                Button(action: { updateManager.dismissBannerForSession() }) {
+                    Text(isVi ? "Để sau" : "Later")
+                        .font(.system(size: 10))
+                }
+                .buttonStyle(.plain)
+                .foregroundColor(.secondary)
+
+                Button(action: { updateManager.startDownloadAndInstall(release: release) }) {
+                    Text(isVi ? "Cập nhật" : "Update")
+                        .font(.system(size: 10, weight: .semibold))
+                }
+                .buttonStyle(.borderedProminent)
+                .controlSize(.small)
+
+            case .error:
+                Button(action: { updateManager.dismissBannerForSession() }) {
+                    Text(isVi ? "Đóng" : "Dismiss")
+                        .font(.system(size: 10))
+                }
+                .buttonStyle(.plain)
+                .foregroundColor(.secondary)
+
+            default:
+                EmptyView()
+            }
+        }
+        .padding(.horizontal, 12)
+        .padding(.vertical, 6)
+        .background(Color.accentColor.opacity(0.1))
     }
 
     // MARK: - Content List Section
