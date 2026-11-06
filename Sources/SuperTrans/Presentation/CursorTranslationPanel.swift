@@ -266,15 +266,22 @@ public final class TranslationSessionController: ObservableObject {
     }
 }
 
-/// Floating borderless NSPanel appearing immediately above the mouse cursor when translating.
-public final class CursorTranslationPanel: NSPanel {
+/// Floating resizable NSPanel appearing immediately above the mouse cursor when translating.
+public final class CursorTranslationPanel: NSPanel, NSWindowDelegate {
     public static let defaultWidth: CGFloat = 420
+    public static let minWidth: CGFloat = 340
+    public static let maxWidth: CGFloat = 1400
+    public static let minHeight: CGFloat = 165
+    public static let maxHeight: CGFloat = 1200
+
     public let sessionController: TranslationSessionController
 
     private var globalMouseMonitor: Any?
     private var localKeyMonitor: Any?
     private var anchorMouseLocation: NSPoint = .zero
     private var isDismissing: Bool = false
+    private var isApplyingProgrammaticFrame: Bool = false
+    private var hasUserCustomPosition: Bool = false
 
     public override var canBecomeKey: Bool { true }
     public override var canBecomeMain: Bool { true }
@@ -282,8 +289,8 @@ public final class CursorTranslationPanel: NSPanel {
     public init(sessionController: TranslationSessionController) {
         self.sessionController = sessionController
         super.init(
-            contentRect: NSRect(x: 0, y: 0, width: Self.defaultWidth, height: 180),
-            styleMask: [.nonactivatingPanel, .borderless],
+            contentRect: NSRect(x: 0, y: 0, width: Self.defaultWidth, height: 185),
+            styleMask: [.nonactivatingPanel, .titled, .fullSizeContentView, .resizable],
             backing: .buffered,
             defer: false
         )
@@ -294,6 +301,11 @@ public final class CursorTranslationPanel: NSPanel {
         self.isFloatingPanel = true
         self.level = .popUpMenu
         self.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary]
+        self.titleVisibility = .hidden
+        self.titlebarAppearsTransparent = true
+        self.standardWindowButton(.closeButton)?.isHidden = true
+        self.standardWindowButton(.miniaturizeButton)?.isHidden = true
+        self.standardWindowButton(.zoomButton)?.isHidden = true
         self.isOpaque = false
         self.backgroundColor = .clear
         self.hasShadow = true
@@ -301,6 +313,9 @@ public final class CursorTranslationPanel: NSPanel {
         self.isMovableByWindowBackground = true
         self.isReleasedWhenClosed = false
         self.animationBehavior = .utilityWindow
+        self.minSize = NSSize(width: Self.minWidth, height: Self.minHeight)
+        self.maxSize = NSSize(width: Self.maxWidth, height: Self.maxHeight)
+        self.delegate = self
 
         sessionController.onDismissPopup = { [weak self] in
             self?.dismiss()
@@ -314,6 +329,7 @@ public final class CursorTranslationPanel: NSPanel {
 
     public func setRootView<V: View>(_ view: V) {
         let hosting = NSHostingController(rootView: view)
+        hosting.sizingOptions = []
         hosting.view.wantsLayer = true
         hosting.view.layer?.backgroundColor = NSColor.clear.cgColor
         self.contentViewController = hosting
@@ -328,16 +344,24 @@ public final class CursorTranslationPanel: NSPanel {
         }
 
         sessionController.previousAppTracker.captureFrontmostApplication()
-        let cursorPoint = mouseLocation ?? NSEvent.mouseLocation
-        self.anchorMouseLocation = cursorPoint
 
         let fittingSize = computeTargetSize()
-        let targetFrame = CursorPopupFrameCalculator.calculatePopupFrameAboveCursor(
-            mouseLoc: cursorPoint,
-            panelSize: fittingSize
-        )
+        let targetFrame: NSRect
 
-        self.setFrame(targetFrame, display: true)
+        // When pinned and already visible, lock popup at its current screen position
+        if self.isVisible && sessionController.isPinned {
+            targetFrame = computeFrameKeepingCurrentTopLeft(for: fittingSize)
+        } else {
+            let cursorPoint = mouseLocation ?? NSEvent.mouseLocation
+            self.anchorMouseLocation = cursorPoint
+            self.hasUserCustomPosition = false
+            targetFrame = CursorPopupFrameCalculator.calculatePopupFrameAboveCursor(
+                mouseLoc: cursorPoint,
+                panelSize: fittingSize
+            )
+        }
+
+        applyProgrammaticFrame(targetFrame)
         self.isDismissing = false
         installMonitors()
         self.orderFrontRegardless()
@@ -347,21 +371,70 @@ public final class CursorTranslationPanel: NSPanel {
     }
 
     public func recalculateFrameIfVisible() {
-        guard isVisible else { return }
+        guard isVisible, !inLiveResize else { return }
         let newSize = computeTargetSize()
-        let targetFrame = CursorPopupFrameCalculator.calculatePopupFrameAboveCursor(
-            mouseLoc: anchorMouseLocation,
-            panelSize: newSize
-        )
-        self.setFrame(targetFrame, display: true)
+        let targetFrame: NSRect
+
+        if sessionController.isPinned || hasUserCustomPosition {
+            targetFrame = computeFrameKeepingCurrentTopLeft(for: newSize)
+        } else {
+            targetFrame = CursorPopupFrameCalculator.calculatePopupFrameAboveCursor(
+                mouseLoc: anchorMouseLocation,
+                panelSize: newSize
+            )
+        }
+        applyProgrammaticFrame(targetFrame)
         self.invalidateShadow()
     }
 
+    private func applyProgrammaticFrame(_ frame: NSRect) {
+        isApplyingProgrammaticFrame = true
+        self.setFrame(frame, display: true)
+        isApplyingProgrammaticFrame = false
+    }
+
+    private func computeFrameKeepingCurrentTopLeft(for newSize: NSSize) -> NSRect {
+        let current = self.frame
+        var originX = current.origin.x
+        var originY = current.maxY - newSize.height
+
+        let screen = self.screen ?? CursorPopupFrameCalculator.findScreen(for: current.origin)
+        if let visibleFrame = screen?.visibleFrame {
+            if originX + newSize.width > visibleFrame.maxX - 6 {
+                originX = max(visibleFrame.minX + 6, visibleFrame.maxX - newSize.width - 6)
+            }
+            if originX < visibleFrame.minX + 6 {
+                originX = visibleFrame.minX + 6
+            }
+            if originY < visibleFrame.minY + 6 {
+                originY = visibleFrame.minY + 6
+            }
+            if originY + newSize.height > visibleFrame.maxY - 6 {
+                originY = max(visibleFrame.minY + 6, visibleFrame.maxY - newSize.height - 6)
+            }
+        }
+
+        return NSRect(
+            x: round(originX),
+            y: round(originY),
+            width: newSize.width,
+            height: newSize.height
+        )
+    }
+
     private func computeTargetSize() -> NSSize {
-        let width: CGFloat = Self.defaultWidth
+        let settings = sessionController.storageManager.settings
+        let savedWidth = settings.popupWidth.map { CGFloat($0) }
+        let width = max(Self.minWidth, min(savedWidth ?? Self.defaultWidth, Self.maxWidth))
+
+        if let savedHeight = settings.popupHeight {
+            let clampedHeight = max(Self.minHeight, min(CGFloat(savedHeight), Self.maxHeight))
+            return NSSize(width: width, height: clampedHeight)
+        }
+
         switch sessionController.state {
         case .idle, .translating:
-            return NSSize(width: width, height: 155)
+            return NSSize(width: width, height: 165)
         case .failed:
             return NSSize(width: width, height: 185)
         case .completed(let translatedText, _, _):
@@ -371,6 +444,38 @@ public final class CursorTranslationPanel: NSPanel {
             let originalExtra: CGFloat = sessionController.showOriginalContent ? 110 : 0
             let totalHeight = min(480, max(185, 128 + estimatedTextHeight + originalExtra))
             return NSSize(width: width, height: totalHeight)
+        }
+    }
+
+    // MARK: - NSWindowDelegate (User Move & Live Resize Persistence)
+
+    public func windowDidMove(_ notification: Notification) {
+        guard !isApplyingProgrammaticFrame, isVisible else { return }
+        hasUserCustomPosition = true
+    }
+
+    public func windowDidResize(_ notification: Notification) {
+        guard !isApplyingProgrammaticFrame, isVisible, inLiveResize else { return }
+        hasUserCustomPosition = true
+        persistUserCustomSize(self.frame.size)
+        self.invalidateShadow()
+    }
+
+    public func windowDidEndLiveResize(_ notification: Notification) {
+        guard isVisible else { return }
+        hasUserCustomPosition = true
+        persistUserCustomSize(self.frame.size)
+        self.invalidateShadow()
+    }
+
+    private func persistUserCustomSize(_ size: NSSize) {
+        let clampedWidth = Double(round(max(Self.minWidth, min(size.width, Self.maxWidth))))
+        let clampedHeight = Double(round(max(Self.minHeight, min(size.height, Self.maxHeight))))
+        var settings = sessionController.storageManager.settings
+        if settings.popupWidth != clampedWidth || settings.popupHeight != clampedHeight {
+            settings.popupWidth = clampedWidth
+            settings.popupHeight = clampedHeight
+            sessionController.storageManager.settings = settings
         }
     }
 

@@ -15,12 +15,19 @@ public struct CursorPopupView: View {
             headerBar
             Divider().opacity(0.55)
             contentArea
+                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
             if case .completed = controller.state {
                 Divider().opacity(0.55)
                 footerBar
             }
         }
-        .frame(width: CursorTranslationPanel.defaultWidth)
+        .frame(
+            minWidth: CursorTranslationPanel.minWidth,
+            maxWidth: .infinity,
+            minHeight: CursorTranslationPanel.minHeight,
+            maxHeight: .infinity,
+            alignment: .topLeading
+        )
         .background(
             RoundedRectangle(cornerRadius: 12, style: .continuous)
                 .fill(.regularMaterial)
@@ -31,6 +38,7 @@ public struct CursorPopupView: View {
                 .stroke(Color(nsColor: .separatorColor).opacity(0.5), lineWidth: 1)
         )
         .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+        .ignoresSafeArea()
     }
 
     // MARK: - Header Bar
@@ -227,10 +235,11 @@ public struct CursorPopupView: View {
                     .frame(maxWidth: .infinity, alignment: .leading)
                     .padding(.vertical, 2)
             }
-            .frame(minHeight: 54, maxHeight: 280)
+            .frame(maxWidth: .infinity, minHeight: 54, maxHeight: .infinity)
         }
         .padding(.horizontal, 14)
         .padding(.vertical, 10)
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
     }
 
     @ViewBuilder

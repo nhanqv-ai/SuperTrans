@@ -165,6 +165,17 @@ struct SuperTransTestRunner {
 
         storage.deleteItem(id: item1.id)
         assertEqual(storage.items.count, 0, "Deleted item")
+
+        // Verify custom popup size persistence in AppSettings
+        var customSettings = storage.settings
+        customSettings.popupWidth = 560
+        customSettings.popupHeight = 480
+        storage.settings = customSettings
+        storage.flushDiskQueue()
+
+        let reloadedStorage = StorageManager(baseDirectory: tempDir)
+        assertEqual(reloadedStorage.settings.popupWidth, 560, "Reloaded settings preserves custom popupWidth")
+        assertEqual(reloadedStorage.settings.popupHeight, 480, "Reloaded settings preserves custom popupHeight")
     }
 
     static func testSearchEngine() {

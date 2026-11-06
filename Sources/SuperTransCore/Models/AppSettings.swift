@@ -47,6 +47,8 @@ public struct AppSettings: Codable, Equatable, Sendable {
     public var ignoredApps: [IgnoredApp]
     public var automaticallyCheckForUpdates: Bool
     public var lastUpdateCheckDate: Date?
+    public var popupWidth: Double?
+    public var popupHeight: Double?
 
     public static let defaultModel: String = "gemini-3.1-flash-lite"
     public static let presetModels: [String] = [
@@ -177,7 +179,9 @@ Rules:
         language: String = AppSettings.defaultLanguage,
         ignoredApps: [IgnoredApp] = [],
         automaticallyCheckForUpdates: Bool = true,
-        lastUpdateCheckDate: Date? = nil
+        lastUpdateCheckDate: Date? = nil,
+        popupWidth: Double? = nil,
+        popupHeight: Double? = nil
     ) {
         self.apiKeys = apiKeys
         let trimmedModel = selectedModel.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -202,6 +206,8 @@ Rules:
         self.ignoredApps = ignoredApps
         self.automaticallyCheckForUpdates = automaticallyCheckForUpdates
         self.lastUpdateCheckDate = lastUpdateCheckDate
+        self.popupWidth = popupWidth
+        self.popupHeight = popupHeight
     }
 
     public init(from decoder: Decoder) throws {
@@ -233,5 +239,7 @@ Rules:
         self.ignoredApps = try c.decodeIfPresent([IgnoredApp].self, forKey: .ignoredApps) ?? []
         self.automaticallyCheckForUpdates = try c.decodeIfPresent(Bool.self, forKey: .automaticallyCheckForUpdates) ?? true
         self.lastUpdateCheckDate = try c.decodeIfPresent(Date.self, forKey: .lastUpdateCheckDate)
+        self.popupWidth = try c.decodeIfPresent(Double.self, forKey: .popupWidth)
+        self.popupHeight = try c.decodeIfPresent(Double.self, forKey: .popupHeight)
     }
 }
