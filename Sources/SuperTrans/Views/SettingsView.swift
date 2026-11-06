@@ -66,6 +66,9 @@ public struct SettingsView: View {
     @State private var newGlossarySourceInput: String = ""
     @State private var newGlossaryTargetInput: String = ""
     @State private var showingAPIKeyGuidePopover: Bool = false
+    @State private var newCustomPromptNameInput: String = ""
+    @State private var selectedInspectorPromptId: String? = nil
+    @FocusState private var isCustomPromptNameFocused: Bool
 
     public init(
         storageManager: StorageManager,
@@ -931,85 +934,439 @@ public struct SettingsView: View {
         .background(cardBackground)
     }
 
-    // MARK: - Tab 3: Prompt (Dedicated Spacious System Prompt Editor & Preset Templates)
+    // MARK: - Tab 3: Prompt (Master-Detail List + Editor with Hide/Show & Custom Prompts)
 
     private var currentPromptPresetId: String {
-        if let matched = AppSettings.matchingPromptPreset(for: storageManager.settings.customSystemPrompt) {
-            return matched.id
+        storageManager.settings.resolvedActivePromptId
+    }
+
+    private var effectiveInspectedPromptId: String {
+        if let inspected = selectedInspectorPromptId {
+            if AppSettings.promptPresets.contains(where: { $0.id == inspected }) ||
+               storageManager.settings.customPromptPresets.contains(where: { $0.id.uuidString == inspected }) {
+                return inspected
+            }
         }
-        return "custom"
+        return currentPromptPresetId
+    }
+
+    private func createNewCustomPromptPreset(basePrompt: String? = nil, baseName: String? = nil) {
+        var s = storageManager.settings
+        let nextIndex = s.customPromptPresets.count + 1
+        let defaultName = isVi ? "Prompt tuỳ chỉnh #\(nextIndex)" : "Custom Prompt #\(nextIndex)"
+        let finalName = baseName ?? defaultName
+        let initialPrompt = basePrompt ?? AppSettings.defaultSystemPrompt
+
+        let newPreset = CustomPromptPreset(
+            name: finalName,
+            prompt: initialPrompt,
+            isHidden: false
+        )
+        s.customPromptPresets.append(newPreset)
+        s.selectedPromptId = newPreset.id.uuidString
+        s.customSystemPrompt = newPreset.prompt
+        storageManager.settings = s
+        selectedInspectorPromptId = newPreset.id.uuidString
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
+            isCustomPromptNameFocused = true
+        }
+    }
+
+    private func deleteCustomPromptPreset(id: UUID) {
+        var s = storageManager.settings
+        s.customPromptPresets.removeAll { $0.id == id }
+        if s.resolvedActivePromptId == id.uuidString {
+            s.selectFirstVisiblePrompt()
+        }
+        storageManager.settings = s
+        if selectedInspectorPromptId == id.uuidString {
+            selectedInspectorPromptId = s.resolvedActivePromptId
+        }
+    }
+
+    private func toggleBuiltinPromptHidden(_ id: String) {
+        var s = storageManager.settings
+        let isCurrentlyHidden = s.isBuiltinPromptHidden(id)
+        if isCurrentlyHidden {
+            s.hiddenBuiltinPromptIds.removeAll { $0 == id }
+        } else {
+            guard s.totalVisiblePromptCount > 1 else { return }
+            if !s.hiddenBuiltinPromptIds.contains(id) {
+                s.hiddenBuiltinPromptIds.append(id)
+            }
+            if s.resolvedActivePromptId == id {
+                s.selectFirstVisiblePrompt()
+                selectedInspectorPromptId = s.resolvedActivePromptId
+            }
+        }
+        storageManager.settings = s
+    }
+
+    private func toggleCustomPromptHidden(_ id: UUID) {
+        var s = storageManager.settings
+        guard let idx = s.customPromptPresets.firstIndex(where: { $0.id == id }) else { return }
+        let isCurrentlyHidden = s.customPromptPresets[idx].isHidden
+        if isCurrentlyHidden {
+            s.customPromptPresets[idx].isHidden = false
+        } else {
+            guard s.totalVisiblePromptCount > 1 else { return }
+            s.customPromptPresets[idx].isHidden = true
+            if s.resolvedActivePromptId == id.uuidString {
+                s.selectFirstVisiblePrompt()
+                selectedInspectorPromptId = s.resolvedActivePromptId
+            }
+        }
+        storageManager.settings = s
+    }
+
+    private func showAllPrompts() {
+        var s = storageManager.settings
+        s.hiddenBuiltinPromptIds = []
+        for idx in s.customPromptPresets.indices {
+            s.customPromptPresets[idx].isHidden = false
+        }
+        storageManager.settings = s
     }
 
     private var promptTabContent: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            HStack {
+        let settings = storageManager.settings
+        let activeId = settings.resolvedActivePromptId
+        let inspectedId = effectiveInspectedPromptId
+        let canHideMore = settings.totalVisiblePromptCount > 1
+
+        return VStack(alignment: .leading, spacing: 8) {
+            // Top Header Row
+            HStack(spacing: 8) {
                 Text(loc.tr(.systemPromptSection))
                     .font(.system(size: 13, weight: .semibold))
                     .foregroundColor(.primary)
+
+                Text(isVi ? "(\(settings.totalVisiblePromptCount) hiển thị trên Popup)" : "(\(settings.totalVisiblePromptCount) visible in Popup)")
+                    .font(.system(size: 11, design: .monospaced))
+                    .foregroundColor(.secondary)
+
                 Spacer()
-                Button(loc.tr(.resetDefaultPromptButton)) {
-                    var s = storageManager.settings
-                    s.customSystemPrompt = AppSettings.defaultSystemPrompt
-                    storageManager.settings = s
-                }
-                .buttonStyle(.bordered)
-                .controlSize(.small)
-                .font(.system(size: 11))
-                .disabled(currentPromptPresetId == "default")
-            }
 
-            Text(isVi
-                 ? "Chọn nhanh mẫu hướng dẫn dịch phù hợp với ngữ cảnh hoặc tự chỉnh sửa trực tiếp trong khung soạn thảo bên dưới."
-                 : "Select a preset translation style below or freely customize the System Prompt in the editor.")
-                .font(.system(size: 11))
-                .foregroundColor(.secondary)
-
-            HStack(spacing: 8) {
-                Text(isVi ? "Mẫu Prompt:" : "Preset Style:")
-                    .font(.system(size: 11.5, weight: .medium))
-                    .frame(width: 85, alignment: .leading)
-
-                Picker("", selection: Binding<String>(
-                    get: { currentPromptPresetId },
-                    set: { selectedId in
-                        if let preset = AppSettings.promptPresets.first(where: { $0.id == selectedId }) {
-                            var s = storageManager.settings
-                            s.customSystemPrompt = preset.prompt
-                            storageManager.settings = s
+                if settings.hasAnyHiddenPrompt {
+                    Button(action: showAllPrompts) {
+                        HStack(spacing: 3) {
+                            Image(systemName: "eye")
+                                .font(.system(size: 10))
+                            Text(isVi ? "Hiện tất cả" : "Show All")
+                                .font(.system(size: 11))
                         }
                     }
-                )) {
-                    ForEach(AppSettings.promptPresets) { preset in
-                        Text(isVi ? preset.titleVi : preset.titleEn).tag(preset.id)
-                    }
-                    if currentPromptPresetId == "custom" {
-                        Divider()
-                        Text(isVi ? "Tuỳ chỉnh (Đang sửa trực tiếp)" : "Custom (Edited)").tag("custom")
-                    }
+                    .buttonStyle(.bordered)
+                    .controlSize(.small)
                 }
-                .labelsHidden()
-                .pickerStyle(.menu)
-                .frame(maxWidth: .infinity, alignment: .leading)
-            }
-            .padding(.vertical, 2)
 
-            TextEditor(text: Binding(
-                get: { storageManager.settings.customSystemPrompt },
-                set: { val in
-                    var s = storageManager.settings
-                    s.customSystemPrompt = val
-                    storageManager.settings = s
+                Button(action: {
+                    createNewCustomPromptPreset()
+                }) {
+                    HStack(spacing: 4) {
+                        Image(systemName: "plus.circle.fill")
+                            .font(.system(size: 10.5))
+                        Text(isVi ? "Thêm Prompt mới" : "New Custom Prompt")
+                            .font(.system(size: 11, weight: .medium))
+                    }
                 }
-            ))
-            .font(.system(size: 11.5, design: .monospaced))
-            .padding(6)
-            .frame(height: 268)
-            .background(Color(nsColor: .textBackgroundColor))
-            .cornerRadius(6)
-            .overlay(
-                RoundedRectangle(cornerRadius: 6, style: .continuous)
-                    .stroke(Color(nsColor: .separatorColor), lineWidth: 0.8)
-            )
+                .buttonStyle(.borderedProminent)
+                .controlSize(.small)
+            }
+
+            // 2-Column Master-Detail Layout (Left: Prompt List with Hide/Show, Right: Prompt Editor)
+            HStack(alignment: .top, spacing: 10) {
+                // Left Column: Master List of Built-in & Custom Prompts
+                ScrollView {
+                    VStack(alignment: .leading, spacing: 3) {
+                        Text(isVi ? "MẪU CÓ SẴN" : "BUILT-IN PRESETS")
+                            .font(.system(size: 9.5, weight: .bold))
+                            .foregroundColor(.secondary)
+                            .padding(.horizontal, 6)
+                            .padding(.top, 4)
+                            .padding(.bottom, 1)
+
+                        ForEach(AppSettings.promptPresets) { preset in
+                            let isHidden = settings.isBuiltinPromptHidden(preset.id)
+                            let isActive = (activeId == preset.id)
+                            let isSelected = (inspectedId == preset.id)
+
+                            HStack(spacing: 5) {
+                                Button(action: {
+                                    selectedInspectorPromptId = preset.id
+                                    if !isHidden {
+                                        var s = storageManager.settings
+                                        s.selectedPromptId = preset.id
+                                        s.customSystemPrompt = preset.prompt
+                                        storageManager.settings = s
+                                    }
+                                }) {
+                                    HStack(spacing: 6) {
+                                        Circle()
+                                            .fill(isActive ? Color.green : Color.clear)
+                                            .frame(width: 6, height: 6)
+
+                                        Text(isVi ? preset.shortTitleVi : preset.shortTitleEn)
+                                            .font(.system(size: 11.5, weight: isSelected ? .semibold : .regular))
+                                            .foregroundColor(isHidden ? .secondary.opacity(0.6) : .primary)
+                                            .strikethrough(isHidden, color: .secondary.opacity(0.6))
+                                            .lineLimit(1)
+                                            .frame(maxWidth: .infinity, alignment: .leading)
+                                    }
+                                    .contentShape(Rectangle())
+                                }
+                                .buttonStyle(.plain)
+
+                                Button(action: {
+                                    toggleBuiltinPromptHidden(preset.id)
+                                }) {
+                                    Image(systemName: isHidden ? "eye.slash" : "eye")
+                                        .font(.system(size: 10.5))
+                                        .foregroundColor(isHidden ? .secondary.opacity(0.5) : .accentColor)
+                                        .frame(width: 20, height: 20)
+                                }
+                                .buttonStyle(.borderless)
+                                .disabled(!isHidden && !canHideMore)
+                                .help(isHidden
+                                      ? (isVi ? "Đang ẩn khỏi Popup — Bấm để hiển thị" : "Hidden from Popup — Click to show")
+                                      : (isVi ? "Đang hiển thị trên Popup — Bấm để ẩn" : "Visible in Popup — Click to hide"))
+                            }
+                            .padding(.horizontal, 6)
+                            .padding(.vertical, 4)
+                            .background(
+                                RoundedRectangle(cornerRadius: 5, style: .continuous)
+                                    .fill(isSelected ? Color.accentColor.opacity(0.16) : Color.clear)
+                            )
+                        }
+
+                        Divider()
+                            .padding(.vertical, 4)
+
+                        HStack {
+                            Text(isVi ? "PROMPT TỰ THÊM" : "CUSTOM PROMPTS")
+                                .font(.system(size: 9.5, weight: .bold))
+                                .foregroundColor(.secondary)
+                            Spacer()
+                            Text("\(settings.customPromptPresets.count)")
+                                .font(.system(size: 9.5, weight: .semibold, design: .monospaced))
+                                .foregroundColor(.secondary)
+                        }
+                        .padding(.horizontal, 6)
+                        .padding(.bottom, 1)
+
+                        if settings.customPromptPresets.isEmpty {
+                            Text(isVi ? "Chưa có Custom Prompt.\nBấm \"+ Thêm Prompt mới\" ở trên." : "No custom prompts yet.\nClick \"+ New Custom Prompt\" above.")
+                                .font(.system(size: 10.5))
+                                .foregroundColor(.secondary)
+                                .padding(.horizontal, 6)
+                                .padding(.vertical, 6)
+                        } else {
+                            ForEach(settings.customPromptPresets) { customPreset in
+                                let isHidden = customPreset.isHidden
+                                let isActive = (activeId == customPreset.id.uuidString)
+                                let isSelected = (inspectedId == customPreset.id.uuidString)
+                                let displayTitle = customPreset.name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+                                    ? (isVi ? "Prompt tuỳ chỉnh" : "Custom Prompt")
+                                    : customPreset.name
+
+                                HStack(spacing: 4) {
+                                    Button(action: {
+                                        selectedInspectorPromptId = customPreset.id.uuidString
+                                        if !isHidden {
+                                            var s = storageManager.settings
+                                            s.selectedPromptId = customPreset.id.uuidString
+                                            s.customSystemPrompt = customPreset.prompt
+                                            storageManager.settings = s
+                                        }
+                                    }) {
+                                        HStack(spacing: 6) {
+                                            Circle()
+                                                .fill(isActive ? Color.green : Color.clear)
+                                                .frame(width: 6, height: 6)
+
+                                            Text(displayTitle)
+                                                .font(.system(size: 11.5, weight: isSelected ? .semibold : .regular))
+                                                .foregroundColor(isHidden ? .secondary.opacity(0.6) : .primary)
+                                                .strikethrough(isHidden, color: .secondary.opacity(0.6))
+                                                .lineLimit(1)
+                                                .frame(maxWidth: .infinity, alignment: .leading)
+                                        }
+                                        .contentShape(Rectangle())
+                                    }
+                                    .buttonStyle(.plain)
+
+                                    Button(action: {
+                                        toggleCustomPromptHidden(customPreset.id)
+                                    }) {
+                                        Image(systemName: isHidden ? "eye.slash" : "eye")
+                                            .font(.system(size: 10.5))
+                                            .foregroundColor(isHidden ? .secondary.opacity(0.5) : .accentColor)
+                                            .frame(width: 18, height: 20)
+                                    }
+                                    .buttonStyle(.borderless)
+                                    .disabled(!isHidden && !canHideMore)
+                                    .help(isHidden
+                                          ? (isVi ? "Đang ẩn khỏi Popup — Bấm để hiển thị" : "Hidden from Popup — Click to show")
+                                          : (isVi ? "Đang hiển thị trên Popup — Bấm để ẩn" : "Visible in Popup — Click to hide"))
+
+                                    Button(action: {
+                                        deleteCustomPromptPreset(id: customPreset.id)
+                                    }) {
+                                        Image(systemName: "trash")
+                                            .font(.system(size: 10))
+                                            .foregroundColor(.red.opacity(0.85))
+                                            .frame(width: 18, height: 20)
+                                    }
+                                    .buttonStyle(.borderless)
+                                    .help(isVi ? "Xoá Custom Prompt này" : "Delete this Custom Prompt")
+                                }
+                                .padding(.horizontal, 6)
+                                .padding(.vertical, 4)
+                                .background(
+                                    RoundedRectangle(cornerRadius: 5, style: .continuous)
+                                        .fill(isSelected ? Color.accentColor.opacity(0.16) : Color.clear)
+                                )
+                            }
+                        }
+                    }
+                    .padding(5)
+                }
+                .frame(width: 200, height: 344)
+                .background(Color(nsColor: .textBackgroundColor))
+                .cornerRadius(6)
+                .overlay(
+                    RoundedRectangle(cornerRadius: 6, style: .continuous)
+                        .stroke(Color(nsColor: .separatorColor), lineWidth: 0.8)
+                )
+
+                // Right Column: Detail Inspector & Editor
+                VStack(alignment: .leading, spacing: 6) {
+                    if let customPreset = settings.customPromptPresets.first(where: { $0.id.uuidString == inspectedId }) {
+                        HStack(spacing: 6) {
+                            Text(isVi ? "Tên:" : "Name:")
+                                .font(.system(size: 11.5, weight: .semibold))
+                                .foregroundColor(.secondary)
+
+                            TextField(
+                                isVi ? "Nhập tên Custom Prompt..." : "Enter Custom Prompt name...",
+                                text: Binding(
+                                    get: {
+                                        storageManager.settings.customPromptPresets.first(where: { $0.id == customPreset.id })?.name ?? customPreset.name
+                                    },
+                                    set: { newName in
+                                        var s = storageManager.settings
+                                        if let idx = s.customPromptPresets.firstIndex(where: { $0.id == customPreset.id }) {
+                                            s.customPromptPresets[idx].name = newName
+                                            storageManager.settings = s
+                                        }
+                                    }
+                                )
+                            )
+                            .textFieldStyle(.roundedBorder)
+                            .font(.system(size: 11.5, weight: .medium))
+                            .focused($isCustomPromptNameFocused)
+
+                            if customPreset.isHidden {
+                                Button(action: {
+                                    var s = storageManager.settings
+                                    if let idx = s.customPromptPresets.firstIndex(where: { $0.id == customPreset.id }) {
+                                        s.customPromptPresets[idx].isHidden = false
+                                        s.selectedPromptId = customPreset.id.uuidString
+                                        s.customSystemPrompt = s.customPromptPresets[idx].prompt
+                                        storageManager.settings = s
+                                    }
+                                }) {
+                                    Text(isVi ? "Hiện & Dùng" : "Show & Use")
+                                        .font(.system(size: 10.5, weight: .medium))
+                                }
+                                .buttonStyle(.borderedProminent)
+                                .controlSize(.small)
+                            }
+                        }
+
+                        TextEditor(text: Binding(
+                            get: {
+                                storageManager.settings.customPromptPresets.first(where: { $0.id == customPreset.id })?.prompt ?? customPreset.prompt
+                            },
+                            set: { newPrompt in
+                                var s = storageManager.settings
+                                if let idx = s.customPromptPresets.firstIndex(where: { $0.id == customPreset.id }) {
+                                    s.customPromptPresets[idx].prompt = newPrompt
+                                    if s.resolvedActivePromptId == customPreset.id.uuidString {
+                                        s.customSystemPrompt = newPrompt
+                                    }
+                                    storageManager.settings = s
+                                }
+                            }
+                        ))
+                        .font(.system(size: 11.5, design: .monospaced))
+                        .padding(6)
+                        .frame(maxWidth: .infinity, minHeight: 312, maxHeight: 312)
+                        .background(Color(nsColor: .textBackgroundColor))
+                        .cornerRadius(6)
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 6, style: .continuous)
+                                .stroke(Color(nsColor: .separatorColor), lineWidth: 0.8)
+                        )
+                    } else if let builtinPreset = AppSettings.promptPresets.first(where: { $0.id == inspectedId }) ?? AppSettings.promptPresets.first {
+                        let isHidden = settings.isBuiltinPromptHidden(builtinPreset.id)
+                        HStack(spacing: 6) {
+                            Text(isVi ? builtinPreset.titleVi : builtinPreset.titleEn)
+                                .font(.system(size: 11.5, weight: .semibold))
+                                .foregroundColor(.primary)
+                                .lineLimit(1)
+
+                            Spacer()
+
+                            if isHidden {
+                                Button(action: {
+                                    var s = storageManager.settings
+                                    s.hiddenBuiltinPromptIds.removeAll { $0 == builtinPreset.id }
+                                    s.selectedPromptId = builtinPreset.id
+                                    s.customSystemPrompt = builtinPreset.prompt
+                                    storageManager.settings = s
+                                }) {
+                                    Text(isVi ? "Hiện & Dùng" : "Show & Use")
+                                        .font(.system(size: 10.5, weight: .medium))
+                                }
+                                .buttonStyle(.borderedProminent)
+                                .controlSize(.small)
+                            }
+
+                            Button(action: {
+                                let baseTitle = (isVi ? builtinPreset.shortTitleVi : builtinPreset.shortTitleEn) + (isVi ? " (Bản sao)" : " (Copy)")
+                                createNewCustomPromptPreset(basePrompt: builtinPreset.prompt, baseName: baseTitle)
+                            }) {
+                                HStack(spacing: 3) {
+                                    Image(systemName: "doc.on.doc")
+                                        .font(.system(size: 9.5))
+                                    Text(isVi ? "Tạo bản sao để sửa" : "Duplicate to Edit")
+                                        .font(.system(size: 10.5))
+                                }
+                            }
+                            .buttonStyle(.bordered)
+                            .controlSize(.small)
+                        }
+
+                        ScrollView {
+                            Text(builtinPreset.prompt)
+                                .font(.system(size: 11.5, design: .monospaced))
+                                .foregroundColor(.secondary)
+                                .textSelection(.enabled)
+                                .frame(maxWidth: .infinity, alignment: .leading)
+                                .padding(8)
+                        }
+                        .frame(maxWidth: .infinity, minHeight: 312, maxHeight: 312)
+                        .background(Color(nsColor: .textBackgroundColor).opacity(0.6))
+                        .cornerRadius(6)
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 6, style: .continuous)
+                                .stroke(Color(nsColor: .separatorColor), lineWidth: 0.8)
+                        )
+                    }
+                }
+                .frame(maxWidth: .infinity)
+            }
         }
         .padding(12)
         .frame(maxWidth: .infinity, alignment: .leading)

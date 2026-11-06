@@ -478,8 +478,12 @@ public struct CursorPopupView: View {
 
     private var currentPromptShortTitle: String {
         let isVi = loc.languageCode == "vi"
-        let currentPrompt = controller.storageManager.settings.customSystemPrompt
-        if let matched = AppSettings.matchingPromptPreset(for: currentPrompt) {
+        let settings = controller.storageManager.settings
+        if let customPreset = settings.activeCustomPromptPreset {
+            let trimmedName = customPreset.name.trimmingCharacters(in: .whitespacesAndNewlines)
+            return trimmedName.isEmpty ? (isVi ? "Prompt tuỳ chỉnh" : "Custom Prompt") : trimmedName
+        }
+        if let matched = AppSettings.matchingPromptPreset(for: settings.customSystemPrompt) {
             return isVi ? matched.shortTitleVi : matched.shortTitleEn
         }
         return isVi ? "Prompt tuỳ chỉnh" : "Custom Prompt"
@@ -487,18 +491,42 @@ public struct CursorPopupView: View {
 
     private var footerBar: some View {
         let isVi = loc.languageCode == "vi"
-        let currentMatchedId = AppSettings.matchingPromptPreset(for: controller.storageManager.settings.customSystemPrompt)?.id
+        let settings = controller.storageManager.settings
+        let currentActiveId = settings.resolvedActivePromptId
+
+        let visibleBuiltins = settings.visibleBuiltinPromptPresets
+        let visibleCustoms = settings.visibleCustomPromptPresets
 
         return HStack(spacing: 8) {
             // Quick Prompt Style Dropdown (Select & immediately re-translate)
             Menu {
-                ForEach(AppSettings.promptPresets) { preset in
+                ForEach(visibleBuiltins) { preset in
                     Button(action: {
-                        controller.selectPromptPresetAndRetranslate(preset.prompt)
+                        controller.selectPromptPresetAndRetranslate(preset.prompt, presetId: preset.id)
                     }) {
                         HStack {
                             Text(isVi ? preset.titleVi : preset.titleEn)
-                            if currentMatchedId == preset.id {
+                            if currentActiveId == preset.id {
+                                Image(systemName: "checkmark")
+                            }
+                        }
+                    }
+                }
+
+                if !visibleBuiltins.isEmpty && !visibleCustoms.isEmpty {
+                    Divider()
+                }
+
+                ForEach(visibleCustoms) { customPreset in
+                    let displayTitle = customPreset.name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+                        ? (isVi ? "Prompt tuỳ chỉnh" : "Custom Prompt")
+                        : customPreset.name
+                    Button(action: {
+                        controller.selectPromptPresetAndRetranslate(customPreset.prompt, presetId: customPreset.id.uuidString)
+                    }) {
+                        HStack {
+                            Text(displayTitle)
+                            if currentActiveId == customPreset.id.uuidString {
                                 Image(systemName: "checkmark")
                             }
                         }

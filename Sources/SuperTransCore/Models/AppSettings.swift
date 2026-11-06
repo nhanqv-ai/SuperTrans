@@ -25,10 +25,44 @@ public struct PromptPreset: Identifiable, Equatable, Sendable {
     }
 }
 
+public struct CustomPromptPreset: Codable, Identifiable, Equatable, Sendable {
+    public var id: UUID
+    public var name: String
+    public var prompt: String
+    public var isHidden: Bool
+    public var createdAt: Date
+
+    public init(
+        id: UUID = UUID(),
+        name: String,
+        prompt: String,
+        isHidden: Bool = false,
+        createdAt: Date = Date()
+    ) {
+        self.id = id
+        self.name = name
+        self.prompt = prompt
+        self.isHidden = isHidden
+        self.createdAt = createdAt
+    }
+
+    public init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        self.id = try c.decodeIfPresent(UUID.self, forKey: .id) ?? UUID()
+        self.name = try c.decodeIfPresent(String.self, forKey: .name) ?? ""
+        self.prompt = try c.decodeIfPresent(String.self, forKey: .prompt) ?? AppSettings.defaultSystemPrompt
+        self.isHidden = try c.decodeIfPresent(Bool.self, forKey: .isHidden) ?? false
+        self.createdAt = try c.decodeIfPresent(Date.self, forKey: .createdAt) ?? Date()
+    }
+}
+
 public struct AppSettings: Codable, Equatable, Sendable {
     public var apiKeys: [String]
     public var selectedModel: String
     public var customSystemPrompt: String
+    public var customPromptPresets: [CustomPromptPreset]
+    public var selectedPromptId: String?
+    public var hiddenBuiltinPromptIds: [String]
     public var targetLanguage: String
     public var enableDoubleCopyTrigger: Bool
     public var autoTranslateEveryCopy: Bool
@@ -142,6 +176,67 @@ Rules:
         }
     }
 
+    public var resolvedActivePromptId: String {
+        let trimmedCurrent = customSystemPrompt.trimmingCharacters(in: .whitespacesAndNewlines)
+        if let sid = selectedPromptId {
+            if customPromptPresets.contains(where: { $0.id.uuidString == sid }) {
+                return sid
+            }
+            if let builtin = AppSettings.promptPresets.first(where: { $0.id == sid }),
+               builtin.prompt.trimmingCharacters(in: .whitespacesAndNewlines) == trimmedCurrent {
+                return sid
+            }
+        }
+        if let matchedCustom = customPromptPresets.first(where: {
+            $0.prompt.trimmingCharacters(in: .whitespacesAndNewlines) == trimmedCurrent
+        }) {
+            return matchedCustom.id.uuidString
+        }
+        if let matchedBuiltin = AppSettings.matchingPromptPreset(for: customSystemPrompt) {
+            return matchedBuiltin.id
+        }
+        return "custom_unsaved"
+    }
+
+    public var activeCustomPromptPreset: CustomPromptPreset? {
+        let aid = resolvedActivePromptId
+        return customPromptPresets.first(where: { $0.id.uuidString == aid })
+    }
+
+    public func isBuiltinPromptHidden(_ id: String) -> Bool {
+        hiddenBuiltinPromptIds.contains(id)
+    }
+
+    public var visibleBuiltinPromptPresets: [PromptPreset] {
+        AppSettings.promptPresets.filter { !hiddenBuiltinPromptIds.contains($0.id) }
+    }
+
+    public var visibleCustomPromptPresets: [CustomPromptPreset] {
+        customPromptPresets.filter { !$0.isHidden }
+    }
+
+    public var totalVisiblePromptCount: Int {
+        visibleBuiltinPromptPresets.count + visibleCustomPromptPresets.count
+    }
+
+    public var hasAnyHiddenPrompt: Bool {
+        !hiddenBuiltinPromptIds.isEmpty || customPromptPresets.contains(where: { $0.isHidden })
+    }
+
+    public mutating func selectFirstVisiblePrompt() {
+        if let firstBuiltin = visibleBuiltinPromptPresets.first {
+            selectedPromptId = firstBuiltin.id
+            customSystemPrompt = firstBuiltin.prompt
+        } else if let firstCustom = visibleCustomPromptPresets.first {
+            selectedPromptId = firstCustom.id.uuidString
+            customSystemPrompt = firstCustom.prompt
+        } else {
+            hiddenBuiltinPromptIds.removeAll { $0 == "default" }
+            selectedPromptId = "default"
+            customSystemPrompt = AppSettings.defaultSystemPrompt
+        }
+    }
+
     public static let defaultTargetLanguage: String = "vi"
     public static let defaultCapacity: Int = 100
     public static let defaultDisplayCapacity: Int = 20
@@ -164,6 +259,9 @@ Rules:
         apiKeys: [String] = [],
         selectedModel: String = AppSettings.defaultModel,
         customSystemPrompt: String = AppSettings.defaultSystemPrompt,
+        customPromptPresets: [CustomPromptPreset] = [],
+        selectedPromptId: String? = nil,
+        hiddenBuiltinPromptIds: [String] = [],
         targetLanguage: String = AppSettings.defaultTargetLanguage,
         enableDoubleCopyTrigger: Bool = true,
         autoTranslateEveryCopy: Bool = false,
@@ -192,6 +290,9 @@ Rules:
         self.selectedModel = trimmedModel.isEmpty ? AppSettings.defaultModel : trimmedModel
         let trimmedPrompt = customSystemPrompt.trimmingCharacters(in: .whitespacesAndNewlines)
         self.customSystemPrompt = trimmedPrompt.isEmpty ? AppSettings.defaultSystemPrompt : customSystemPrompt
+        self.customPromptPresets = customPromptPresets
+        self.selectedPromptId = selectedPromptId
+        self.hiddenBuiltinPromptIds = hiddenBuiltinPromptIds
         self.targetLanguage = targetLanguage.isEmpty ? AppSettings.defaultTargetLanguage : targetLanguage
         self.enableDoubleCopyTrigger = enableDoubleCopyTrigger
         self.autoTranslateEveryCopy = autoTranslateEveryCopy
@@ -223,6 +324,9 @@ Rules:
         self.selectedModel = model.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? AppSettings.defaultModel : model
         let prompt = try c.decodeIfPresent(String.self, forKey: .customSystemPrompt) ?? AppSettings.defaultSystemPrompt
         self.customSystemPrompt = prompt.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? AppSettings.defaultSystemPrompt : prompt
+        self.customPromptPresets = try c.decodeIfPresent([CustomPromptPreset].self, forKey: .customPromptPresets) ?? []
+        self.selectedPromptId = try c.decodeIfPresent(String.self, forKey: .selectedPromptId)
+        self.hiddenBuiltinPromptIds = try c.decodeIfPresent([String].self, forKey: .hiddenBuiltinPromptIds) ?? []
         self.targetLanguage = try c.decodeIfPresent(String.self, forKey: .targetLanguage) ?? AppSettings.defaultTargetLanguage
         self.enableDoubleCopyTrigger = try c.decodeIfPresent(Bool.self, forKey: .enableDoubleCopyTrigger) ?? true
         self.autoTranslateEveryCopy = try c.decodeIfPresent(Bool.self, forKey: .autoTranslateEveryCopy) ?? false

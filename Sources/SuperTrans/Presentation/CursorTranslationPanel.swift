@@ -207,9 +207,12 @@ public final class TranslationSessionController: ObservableObject {
         )
     }
 
-    public func selectPromptPresetAndRetranslate(_ newPrompt: String) {
+    public func selectPromptPresetAndRetranslate(_ newPrompt: String, presetId: String? = nil) {
         var s = storageManager.settings
         s.customSystemPrompt = newPrompt
+        if let presetId = presetId {
+            s.selectedPromptId = presetId
+        }
         storageManager.settings = s
         objectWillChange.send()
         retranslate()

@@ -37,6 +37,7 @@ struct SuperTransTestRunner {
         testCursorPopupPositioning()
         testCircularShortcutNavigator()
         testUpdateManagerVersionAndReleaseParsing()
+        testCustomPromptPresetsAndVisibility()
 
         print("--------------------------------------------------")
         print("SuperTrans Tests Completed: \(passed) passed, \(failed) failed.")
@@ -318,5 +319,31 @@ struct SuperTransTestRunner {
             "https://github.com/nhanqv-ai/SuperTrans/releases/download/v1.0.2/SuperTrans-v1.0.2.zip",
             "Parsed zip asset download URL"
         )
+    }
+
+    static func testCustomPromptPresetsAndVisibility() {
+        var settings = AppSettings()
+        assertEqual(settings.visibleBuiltinPromptPresets.count, 5, "All 5 built-in presets visible by default")
+        assertEqual(settings.totalVisiblePromptCount, 5, "Total visible prompts is 5 by default")
+
+        let custom1 = CustomPromptPreset(name: "Dịch Keigo", prompt: "Translate into polite Japanese Keigo.", isHidden: false)
+        let custom2 = CustomPromptPreset(name: "Review Code", prompt: "Explain code and translate comments.", isHidden: true)
+        settings.customPromptPresets = [custom1, custom2]
+        settings.selectedPromptId = custom1.id.uuidString
+        settings.customSystemPrompt = custom1.prompt
+
+        assertEqual(settings.resolvedActivePromptId, custom1.id.uuidString, "Active prompt resolves to custom1")
+        assertEqual(settings.visibleCustomPromptPresets.count, 1, "Only non-hidden custom prompt is in visibleCustomPromptPresets")
+        assertEqual(settings.totalVisiblePromptCount, 6, "5 built-in + 1 visible custom = 6")
+
+        // Hide built-in 'default' and 'it_tech'
+        settings.hiddenBuiltinPromptIds = ["default", "it_tech"]
+        assertEqual(settings.visibleBuiltinPromptPresets.count, 3, "3 built-in presets remain visible")
+        assertTrue(settings.hasAnyHiddenPrompt, "hasAnyHiddenPrompt is true when built-in or custom prompts are hidden")
+
+        // When active custom1 is hidden, selectFirstVisiblePrompt switches to first visible built-in ('business')
+        settings.customPromptPresets[0].isHidden = true
+        settings.selectFirstVisiblePrompt()
+        assertEqual(settings.resolvedActivePromptId, "business", "Automatically falls back to first visible prompt ('business')")
     }
 }
