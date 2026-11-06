@@ -729,43 +729,57 @@ public struct SettingsView: View {
         }
     }
 
+    private func modelDisplayLabel(for modelId: String) -> String {
+        switch modelId {
+        case "gemini-3.1-flash-lite":
+            return isVi ? "gemini-3.1-flash-lite (Nhanh nhất — Khuyên dùng)" : "gemini-3.1-flash-lite (Fastest — Recommended)"
+        case "gemini-3.5-flash-lite":
+            return isVi ? "gemini-3.5-flash-lite (Rất nhanh)" : "gemini-3.5-flash-lite (Very Fast)"
+        case "gemini-3-flash-preview":
+            return isVi ? "gemini-3-flash-preview (Cân bằng)" : "gemini-3-flash-preview (Balanced)"
+        case "gemini-3.5-flash":
+            return isVi ? "gemini-3.5-flash (Chất lượng cao)" : "gemini-3.5-flash (High Quality)"
+        default:
+            return modelId
+        }
+    }
+
     private var modelAndPromptCard: some View {
         VStack(alignment: .leading, spacing: 6) {
             Text(loc.tr(.geminiModelSection))
                 .font(.system(size: 12.5, weight: .semibold))
                 .foregroundColor(.primary)
 
-            // Fast Preset Buttons (Instant click response)
-            HStack(spacing: 6) {
-                ForEach(AppSettings.presetModels, id: \.self) { preset in
-                    let isSelected = storageManager.settings.selectedModel == preset
-                    Button(action: {
+            HStack(spacing: 8) {
+                Text(isVi ? "Chọn Model:" : "Select Model:")
+                    .font(.system(size: 11.5))
+                    .frame(width: 85, alignment: .leading)
+
+                Picker("", selection: Binding(
+                    get: { storageManager.settings.selectedModel },
+                    set: { val in
                         var s = storageManager.settings
-                        s.selectedModel = preset
+                        s.selectedModel = val
                         storageManager.settings = s
-                    }) {
-                        Text(preset)
-                            .font(.system(size: 10.5, weight: isSelected ? .semibold : .regular, design: .monospaced))
-                            .padding(.horizontal, 7)
-                            .padding(.vertical, 4)
-                            .background(
-                                RoundedRectangle(cornerRadius: 5, style: .continuous)
-                                    .fill(isSelected ? Color.accentColor : Color(nsColor: .textBackgroundColor))
-                            )
-                            .overlay(
-                                RoundedRectangle(cornerRadius: 5, style: .continuous)
-                                    .stroke(isSelected ? Color.accentColor : Color(nsColor: .separatorColor), lineWidth: 0.8)
-                            )
-                            .foregroundColor(isSelected ? .white : .primary)
                     }
-                    .buttonStyle(.plain)
+                )) {
+                    ForEach(AppSettings.presetModels, id: \.self) { preset in
+                        Text(modelDisplayLabel(for: preset)).tag(preset)
+                    }
+                    if !AppSettings.presetModels.contains(storageManager.settings.selectedModel) {
+                        Text(storageManager.settings.selectedModel).tag(storageManager.settings.selectedModel)
+                    }
                 }
+                .labelsHidden()
+                .pickerStyle(.menu)
+                .frame(maxWidth: .infinity, alignment: .leading)
             }
 
-            HStack(spacing: 6) {
-                Text("Model ID:")
+            HStack(spacing: 8) {
+                Text(isVi ? "Model tuỳ chỉnh:" : "Custom Model:")
                     .font(.system(size: 11))
                     .foregroundColor(.secondary)
+                    .frame(width: 85, alignment: .leading)
                 TextField(loc.tr(.customModelPlaceholder), text: Binding(
                     get: { storageManager.settings.selectedModel },
                     set: { val in
