@@ -303,8 +303,55 @@ public struct CursorPopupView: View {
 
     // MARK: - Footer Bar
 
+    private var currentPromptShortTitle: String {
+        let isVi = loc.languageCode == "vi"
+        let currentPrompt = controller.storageManager.settings.customSystemPrompt
+        if let matched = AppSettings.matchingPromptPreset(for: currentPrompt) {
+            return isVi ? matched.shortTitleVi : matched.shortTitleEn
+        }
+        return isVi ? "Prompt tuỳ chỉnh" : "Custom Prompt"
+    }
+
     private var footerBar: some View {
-        HStack(spacing: 8) {
+        let isVi = loc.languageCode == "vi"
+        let currentMatchedId = AppSettings.matchingPromptPreset(for: controller.storageManager.settings.customSystemPrompt)?.id
+
+        return HStack(spacing: 8) {
+            // Quick Prompt Style Dropdown (Select & immediately re-translate)
+            Menu {
+                ForEach(AppSettings.promptPresets) { preset in
+                    Button(action: {
+                        controller.selectPromptPresetAndRetranslate(preset.prompt)
+                    }) {
+                        HStack {
+                            Text(isVi ? preset.titleVi : preset.titleEn)
+                            if currentMatchedId == preset.id {
+                                Image(systemName: "checkmark")
+                            }
+                        }
+                    }
+                }
+            } label: {
+                HStack(spacing: 4) {
+                    Image(systemName: "text.bubble")
+                        .font(.system(size: 10, weight: .medium))
+                        .foregroundColor(.secondary)
+                    Text(currentPromptShortTitle)
+                        .font(.system(size: 11, weight: .medium))
+                        .foregroundColor(.primary)
+                        .lineLimit(1)
+                    Image(systemName: "chevron.down")
+                        .font(.system(size: 8, weight: .bold))
+                        .foregroundColor(.secondary)
+                }
+                .padding(.horizontal, 8)
+                .padding(.vertical, 5)
+                .background(RoundedRectangle(cornerRadius: 5).fill(Color.secondary.opacity(0.14)))
+            }
+            .menuStyle(.borderlessButton)
+            .fixedSize()
+            .help(isVi ? "Chọn kiểu Prompt và dịch lại ngay" : "Select Prompt style and re-translate immediately")
+
             Spacer()
 
             // Re-translate button

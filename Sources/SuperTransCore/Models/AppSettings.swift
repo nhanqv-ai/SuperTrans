@@ -1,5 +1,30 @@
 import Foundation
 
+public struct PromptPreset: Identifiable, Equatable, Sendable {
+    public let id: String
+    public let shortTitleVi: String
+    public let shortTitleEn: String
+    public let titleVi: String
+    public let titleEn: String
+    public let prompt: String
+
+    public init(
+        id: String,
+        shortTitleVi: String,
+        shortTitleEn: String,
+        titleVi: String,
+        titleEn: String,
+        prompt: String
+    ) {
+        self.id = id
+        self.shortTitleVi = shortTitleVi
+        self.shortTitleEn = shortTitleEn
+        self.titleVi = titleVi
+        self.titleEn = titleEn
+        self.prompt = prompt
+    }
+}
+
 public struct AppSettings: Codable, Equatable, Sendable {
     public var apiKeys: [String]
     public var selectedModel: String
@@ -38,6 +63,80 @@ Rules:
 2. Preserve original formatting, line breaks, bullet points, and code/technical identifiers where appropriate.
 3. If the input is an image, extract all visible text in the image and translate it naturally into the target language while maintaining its structure.
 """
+
+    public static let promptPresets: [PromptPreset] = [
+        PromptPreset(
+            id: "default",
+            shortTitleVi: "Mặc định (Tự nhiên)",
+            shortTitleEn: "Default (Natural)",
+            titleVi: "Mặc định — Dịch tự nhiên & chuẩn xác",
+            titleEn: "Default — Natural & Accurate Translation",
+            prompt: AppSettings.defaultSystemPrompt
+        ),
+        PromptPreset(
+            id: "it_tech",
+            shortTitleVi: "IT / Phần mềm",
+            shortTitleEn: "IT / Software",
+            titleVi: "Chuyên ngành IT / Phần mềm — Giữ nguyên thuật ngữ & Code",
+            titleEn: "IT & Software Engineering — Preserve Technical Terms & Code",
+            prompt: """
+You are a senior software engineer and technical translator. Translate the user's input accurately into the requested target language.
+Rules:
+1. Return ONLY the translated text without introductory remarks or explanations.
+2. Keep programming keywords, variable/function names, CLI commands, API paths, log identifiers, and standard English IT terms (e.g., commit, pull request, deploy, payload, token, thread) intact where appropriate.
+3. Preserve all code blocks, markdown formatting, bullet points, and line breaks.
+4. If the input is an image (screenshot of code, logs, or UI), extract all visible text and translate naturally while preserving technical structure.
+"""
+        ),
+        PromptPreset(
+            id: "business",
+            shortTitleVi: "Email / Công việc",
+            shortTitleEn: "Business / BPO",
+            titleVi: "Email & Công việc (BPO/Doanh nghiệp) — Văn phong lịch sự, chuyên nghiệp",
+            titleEn: "Business & BPO Communication — Polite & Professional Tone",
+            prompt: """
+You are an executive business and BPO communication translator (experienced with Japanese, English, and Vietnamese corporate workflows). Translate the user's input into the requested target language using a polite, clear, and professional business tone.
+Rules:
+1. Return ONLY the translated text without extra commentary.
+2. Accurately convey honorifics, nuances, action items, deadlines, and client/partner names.
+3. Preserve original bullet points, numbering, and paragraph structure.
+4. If the input is an image (document, chat log, or spreadsheet screenshot), extract all visible text and translate accurately in structured form.
+"""
+        ),
+        PromptPreset(
+            id: "learning",
+            shortTitleVi: "Học ngoại ngữ (Giải thích)",
+            shortTitleEn: "Language Learning",
+            titleVi: "Học ngoại ngữ — Dịch kèm giải thích từ vựng & cấu trúc câu",
+            titleEn: "Language Learning — Translate with Vocabulary & Grammar Notes",
+            prompt: """
+Translate the user's input into the requested target language and provide brief language-learning notes.
+Format your response as follows:
+1. [Bản dịch / Translation]: Natural and accurate translation of the input.
+2. [Từ vựng & Ngữ pháp / Key Vocabulary & Grammar]: 2-4 bullet points explaining key words, idioms, or grammar structures from the source text.
+"""
+        ),
+        PromptPreset(
+            id: "concise",
+            shortTitleVi: "Tóm tắt ý chính",
+            shortTitleEn: "Concise Summary",
+            titleVi: "Tóm tắt & Dịch ý chính ngắn gọn",
+            titleEn: "Concise Summary & Core Meaning Translation",
+            prompt: """
+Translate the user's input into the requested target language concisely, focusing on the clearest and most direct expression of the core meaning.
+Rules:
+1. Return ONLY the translated text without introductory remarks.
+2. Eliminate unnecessary filler words while preserving all factual details, numbers, and technical identifiers.
+"""
+        )
+    ]
+
+    public static func matchingPromptPreset(for customPrompt: String) -> PromptPreset? {
+        let trimmed = customPrompt.trimmingCharacters(in: .whitespacesAndNewlines)
+        return promptPresets.first {
+            $0.prompt.trimmingCharacters(in: .whitespacesAndNewlines) == trimmed
+        }
+    }
 
     public static let defaultTargetLanguage: String = "vi"
     public static let defaultCapacity: Int = 100

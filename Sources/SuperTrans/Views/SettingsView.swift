@@ -838,77 +838,8 @@ public struct SettingsView: View {
 
     // MARK: - Tab 3: Prompt (Dedicated Spacious System Prompt Editor & Preset Templates)
 
-    private struct PromptPreset: Identifiable {
-        let id: String
-        let titleVi: String
-        let titleEn: String
-        let prompt: String
-    }
-
-    private var promptPresets: [PromptPreset] {
-        [
-            PromptPreset(
-                id: "default",
-                titleVi: "Mặc định — Dịch tự nhiên & chuẩn xác",
-                titleEn: "Default — Natural & Accurate Translation",
-                prompt: AppSettings.defaultSystemPrompt
-            ),
-            PromptPreset(
-                id: "it_tech",
-                titleVi: "Chuyên ngành IT / Phần mềm — Giữ nguyên thuật ngữ & Code",
-                titleEn: "IT & Software Engineering — Preserve Technical Terms & Code",
-                prompt: """
-You are a senior software engineer and technical translator. Translate the user's input accurately into the requested target language.
-Rules:
-1. Return ONLY the translated text without introductory remarks or explanations.
-2. Keep programming keywords, variable/function names, CLI commands, API paths, log identifiers, and standard English IT terms (e.g., commit, pull request, deploy, payload, token, thread) intact where appropriate.
-3. Preserve all code blocks, markdown formatting, bullet points, and line breaks.
-4. If the input is an image (screenshot of code, logs, or UI), extract all visible text and translate naturally while preserving technical structure.
-"""
-            ),
-            PromptPreset(
-                id: "business",
-                titleVi: "Email & Công việc (BPO/Doanh nghiệp) — Văn phong lịch sự, chuyên nghiệp",
-                titleEn: "Business & BPO Communication — Polite & Professional Tone",
-                prompt: """
-You are an executive business and BPO communication translator (experienced with Japanese, English, and Vietnamese corporate workflows). Translate the user's input into the requested target language using a polite, clear, and professional business tone.
-Rules:
-1. Return ONLY the translated text without extra commentary.
-2. Accurately convey honorifics, nuances, action items, deadlines, and client/partner names.
-3. Preserve original bullet points, numbering, and paragraph structure.
-4. If the input is an image (document, chat log, or spreadsheet screenshot), extract all visible text and translate accurately in structured form.
-"""
-            ),
-            PromptPreset(
-                id: "learning",
-                titleVi: "Học ngoại ngữ — Dịch kèm giải thích từ vựng & cấu trúc câu",
-                titleEn: "Language Learning — Translate with Vocabulary & Grammar Notes",
-                prompt: """
-Translate the user's input into the requested target language and provide brief language-learning notes.
-Format your response as follows:
-1. [Bản dịch / Translation]: Natural and accurate translation of the input.
-2. [Từ vựng & Ngữ pháp / Key Vocabulary & Grammar]: 2-4 bullet points explaining key words, idioms, or grammar structures from the source text.
-"""
-            ),
-            PromptPreset(
-                id: "concise",
-                titleVi: "Tóm tắt & Dịch ý chính ngắn gọn",
-                titleEn: "Concise Summary & Core Meaning Translation",
-                prompt: """
-Translate the user's input into the requested target language concisely, focusing on the clearest and most direct expression of the core meaning.
-Rules:
-1. Return ONLY the translated text without introductory remarks.
-2. Eliminate unnecessary filler words while preserving all factual details, numbers, and technical identifiers.
-"""
-            )
-        ]
-    }
-
     private var currentPromptPresetId: String {
-        let current = storageManager.settings.customSystemPrompt.trimmingCharacters(in: .whitespacesAndNewlines)
-        if let matched = promptPresets.first(where: {
-            $0.prompt.trimmingCharacters(in: .whitespacesAndNewlines) == current
-        }) {
+        if let matched = AppSettings.matchingPromptPreset(for: storageManager.settings.customSystemPrompt) {
             return matched.id
         }
         return "custom"
@@ -946,14 +877,14 @@ Rules:
                 Picker("", selection: Binding<String>(
                     get: { currentPromptPresetId },
                     set: { selectedId in
-                        if let preset = promptPresets.first(where: { $0.id == selectedId }) {
+                        if let preset = AppSettings.promptPresets.first(where: { $0.id == selectedId }) {
                             var s = storageManager.settings
                             s.customSystemPrompt = preset.prompt
                             storageManager.settings = s
                         }
                     }
                 )) {
-                    ForEach(promptPresets) { preset in
+                    ForEach(AppSettings.promptPresets) { preset in
                         Text(isVi ? preset.titleVi : preset.titleEn).tag(preset.id)
                     }
                     if currentPromptPresetId == "custom" {

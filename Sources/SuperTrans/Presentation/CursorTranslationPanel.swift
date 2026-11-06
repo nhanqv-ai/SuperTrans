@@ -178,6 +178,14 @@ public final class TranslationSessionController: ObservableObject {
         )
     }
 
+    public func selectPromptPresetAndRetranslate(_ newPrompt: String) {
+        var s = storageManager.settings
+        s.customSystemPrompt = newPrompt
+        storageManager.settings = s
+        objectWillChange.send()
+        retranslate()
+    }
+
     public func copyTranslationAndDismiss(shouldDismiss: Bool = true) {
         guard case .completed(let translatedText, _, _) = state else { return }
         _ = pasteboardWriter.writeText(translatedText)
