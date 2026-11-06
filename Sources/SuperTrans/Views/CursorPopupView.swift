@@ -304,49 +304,22 @@ public struct CursorPopupView: View {
     // MARK: - Footer Bar
 
     private var footerBar: some View {
-        HStack(spacing: 6) {
-            if case .completed(_, let modelUsed, _) = controller.state {
-                HStack(spacing: 3) {
-                    Image(systemName: "cpu")
-                        .font(.system(size: 9))
-                    Text(modelUsed)
-                        .font(.system(size: 10, weight: .medium))
-                }
-                .foregroundColor(.secondary)
-            }
-
+        HStack(spacing: 8) {
             Spacer()
 
             // Re-translate button
             Button(action: {
                 controller.retranslate()
             }) {
-                HStack(spacing: 3) {
+                HStack(spacing: 4) {
                     Image(systemName: "arrow.clockwise")
                         .font(.system(size: 10, weight: .medium))
                     Text(loc.tr(.popupRetranslate))
                         .font(.system(size: 11, weight: .medium))
                 }
-                .padding(.horizontal, 8)
-                .padding(.vertical, 4)
-                .background(RoundedRectangle(cornerRadius: 5).fill(Color.secondary.opacity(0.12)))
-                .foregroundColor(.primary)
-            }
-            .buttonStyle(.plain)
-
-            // Auto-Paste button (Cmd + Enter)
-            Button(action: {
-                controller.autoPasteTranslationAndDismiss()
-            }) {
-                HStack(spacing: 4) {
-                    Image(systemName: "doc.on.clipboard.fill")
-                        .font(.system(size: 10, weight: .medium))
-                    Text(loc.tr(.popupAutoPaste))
-                        .font(.system(size: 11, weight: .medium))
-                }
-                .padding(.horizontal, 8)
-                .padding(.vertical, 4)
-                .background(RoundedRectangle(cornerRadius: 5).fill(Color.secondary.opacity(0.15)))
+                .padding(.horizontal, 10)
+                .padding(.vertical, 5)
+                .background(RoundedRectangle(cornerRadius: 5).fill(Color.secondary.opacity(0.14)))
                 .foregroundColor(.primary)
             }
             .buttonStyle(.plain)
@@ -361,8 +334,8 @@ public struct CursorPopupView: View {
                     Text(controller.didCopyFeedback ? loc.tr(.popupCopied) : loc.tr(.popupCopyTranslation))
                         .font(.system(size: 11, weight: .semibold))
                 }
-                .padding(.horizontal, 10)
-                .padding(.vertical, 4)
+                .padding(.horizontal, 12)
+                .padding(.vertical, 5)
                 .background(RoundedRectangle(cornerRadius: 5).fill(Color.accentColor))
                 .foregroundColor(.white)
             }
