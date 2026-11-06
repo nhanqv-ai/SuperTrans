@@ -363,7 +363,9 @@ public struct CursorPopupView: View {
                         .font(.system(size: 10, weight: .medium))
                     Text(loc.tr(.popupRetranslate))
                         .font(.system(size: 11, weight: .medium))
+                        .lineLimit(1)
                 }
+                .fixedSize()
                 .padding(.horizontal, 10)
                 .padding(.vertical, 5)
                 .background(RoundedRectangle(cornerRadius: 5).fill(Color.secondary.opacity(0.14)))
@@ -380,7 +382,9 @@ public struct CursorPopupView: View {
                         .font(.system(size: 10, weight: .semibold))
                     Text(controller.didCopyFeedback ? loc.tr(.popupCopied) : loc.tr(.popupCopyTranslation))
                         .font(.system(size: 11, weight: .semibold))
+                        .lineLimit(1)
                 }
+                .fixedSize()
                 .padding(.horizontal, 12)
                 .padding(.vertical, 5)
                 .background(RoundedRectangle(cornerRadius: 5).fill(Color.accentColor))

@@ -205,7 +205,7 @@ public final class LocalizationManager: ObservableObject, @unchecked Sendable {
 
         .popupTranslating: "Đang dịch bằng Gemini AI...",
         .popupTargetLanguage: "Dịch sang",
-        .popupCopyTranslation: "Copy (Enter)",
+        .popupCopyTranslation: "Copy",
         .popupCopied: "Đã copy!",
         .popupAutoPaste: "Dán đè (Cmd+Enter)",
         .popupRetranslate: "Dịch lại",
@@ -317,7 +317,7 @@ public final class LocalizationManager: ObservableObject, @unchecked Sendable {
 
         .popupTranslating: "Translating with Gemini AI...",
         .popupTargetLanguage: "Translate to",
-        .popupCopyTranslation: "Copy (Enter)",
+        .popupCopyTranslation: "Copy",
         .popupCopied: "Copied!",
         .popupAutoPaste: "Auto-Paste (Cmd+Enter)",
         .popupRetranslate: "Re-translate",
