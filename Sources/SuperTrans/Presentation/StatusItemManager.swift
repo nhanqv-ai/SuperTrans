@@ -147,6 +147,54 @@ public final class StatusItemManager: NSObject, NSPopoverDelegate, NSMenuDelegat
         autoTranslateItem.image = NSImage(systemSymbolName: "bolt.fill", accessibilityDescription: nil)
         menu.addItem(autoTranslateItem)
 
+        // Target Language Quick Submenu
+        if let storage = storageManager {
+            let langSubmenu = NSMenu(title: loc.tr(.popupTargetLanguage))
+            let currentLang = storage.settings.targetLanguage
+            for option in LanguageOption.supported {
+                let item = NSMenuItem(
+                    title: option.displayName,
+                    action: #selector(selectTargetLanguageClicked(_:)),
+                    keyEquivalent: ""
+                )
+                item.target = self
+                item.representedObject = option.code
+                item.state = (option.code == currentLang) ? .on : .off
+                langSubmenu.addItem(item)
+            }
+            let langParentItem = NSMenuItem(
+                title: "\(loc.tr(.popupTargetLanguage)): \(LanguageOption.option(for: currentLang).displayName)",
+                action: nil,
+                keyEquivalent: ""
+            )
+            langParentItem.image = NSImage(systemSymbolName: "globe", accessibilityDescription: nil)
+            langParentItem.submenu = langSubmenu
+            menu.addItem(langParentItem)
+
+            // Active Project Quick Submenu
+            let projSubmenu = NSMenu(title: loc.languageCode == "vi" ? "Dự án" : "Project")
+            let activeProjId = storage.activeProject.id
+            for project in storage.projects {
+                let item = NSMenuItem(
+                    title: project.name,
+                    action: #selector(selectProjectClicked(_:)),
+                    keyEquivalent: ""
+                )
+                item.target = self
+                item.representedObject = project.id
+                item.state = (project.id == activeProjId) ? .on : .off
+                projSubmenu.addItem(item)
+            }
+            let projParentItem = NSMenuItem(
+                title: "\(loc.languageCode == "vi" ? "Dự án" : "Project"): \(storage.activeProject.name)",
+                action: nil,
+                keyEquivalent: ""
+            )
+            projParentItem.image = NSImage(systemSymbolName: "folder.fill", accessibilityDescription: nil)
+            projParentItem.submenu = projSubmenu
+            menu.addItem(projParentItem)
+        }
+
         menu.addItem(.separator())
 
         let prefsItem = NSMenuItem(
@@ -265,6 +313,18 @@ public final class StatusItemManager: NSObject, NSPopoverDelegate, NSMenuDelegat
 
     @objc private func checkForUpdatesClicked(_ sender: Any?) {
         onCheckForUpdatesRequested?()
+    }
+
+    @objc private func selectTargetLanguageClicked(_ sender: NSMenuItem) {
+        guard let code = sender.representedObject as? String, let storage = storageManager else { return }
+        var s = storage.settings
+        s.targetLanguage = code
+        storage.settings = s
+    }
+
+    @objc private func selectProjectClicked(_ sender: NSMenuItem) {
+        guard let projectId = sender.representedObject as? UUID, let storage = storageManager else { return }
+        storage.selectActiveProject(id: projectId)
     }
 
     @objc private func quitClicked(_ sender: Any?) {
