@@ -15,6 +15,7 @@ public struct SettingsView: View {
     public enum SettingsTab: String, CaseIterable, Identifiable {
         case general
         case geminiAI
+        case prompt
         case ignoredApps
         case about
 
@@ -25,6 +26,7 @@ public struct SettingsView: View {
             switch self {
             case .general: return LocalizationManager.shared.tr(.tabGeneral)
             case .geminiAI: return LocalizationManager.shared.tr(.tabGeminiAI)
+            case .prompt: return "Prompt"
             case .ignoredApps: return LocalizationManager.shared.tr(.tabIgnoredApps)
             case .about: return isVi ? "Thông tin" : "About"
             }
@@ -34,6 +36,7 @@ public struct SettingsView: View {
             switch self {
             case .general: return "gear"
             case .geminiAI: return "sparkles"
+            case .prompt: return "text.bubble"
             case .ignoredApps: return "eye.slash"
             case .about: return "info.circle"
             }
@@ -41,6 +44,7 @@ public struct SettingsView: View {
     }
 
     @State private var selectedTab: SettingsTab = .general
+    @State private var isCustomModelMode: Bool = false
     @State private var newAPIKeyInput: String = ""
     @State private var revealedKeys: Set<String> = []
     @State private var testingKeys: Set<String> = []
@@ -84,6 +88,7 @@ public struct SettingsView: View {
         .background(Color(nsColor: .windowBackgroundColor))
         .onAppear {
             isAccessibilityTrusted = autoPasteService.checkAccessibilityPermission()
+            isCustomModelMode = !AppSettings.presetModels.contains(storageManager.settings.selectedModel)
         }
         .onReceive(NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)) { _ in
             isAccessibilityTrusted = autoPasteService.checkAccessibilityPermission()
@@ -138,6 +143,8 @@ public struct SettingsView: View {
                     generalTabContent
                 case .geminiAI:
                     geminiTabContent
+                case .prompt:
+                    promptTabContent
                 case .ignoredApps:
                     ignoredAppsTabContent
                 case .about:
@@ -569,7 +576,7 @@ public struct SettingsView: View {
             if storageManager.settings.validAPIKeys.isEmpty {
                 RoundedRectangle(cornerRadius: 6, style: .continuous)
                     .fill(Color(nsColor: .textBackgroundColor))
-                    .frame(height: 86)
+                    .frame(height: 150)
                     .overlay(
                         VStack(spacing: 4) {
                             Image(systemName: "key")
@@ -593,7 +600,7 @@ public struct SettingsView: View {
                     }
                     .padding(4)
                 }
-                .frame(height: 102)
+                .frame(height: 175)
                 .background(Color(nsColor: .textBackgroundColor))
                 .cornerRadius(6)
                 .overlay(
@@ -745,7 +752,27 @@ public struct SettingsView: View {
     }
 
     private var modelAndPromptCard: some View {
-        VStack(alignment: .leading, spacing: 6) {
+        let showCustomInput = isCustomModelMode || !AppSettings.presetModels.contains(storageManager.settings.selectedModel)
+        let pickerSelection = Binding<String>(
+            get: {
+                if showCustomInput {
+                    return "__custom__"
+                }
+                return storageManager.settings.selectedModel
+            },
+            set: { val in
+                if val == "__custom__" {
+                    isCustomModelMode = true
+                } else {
+                    isCustomModelMode = false
+                    var s = storageManager.settings
+                    s.selectedModel = val
+                    storageManager.settings = s
+                }
+            }
+        )
+
+        return VStack(alignment: .leading, spacing: 6) {
             Text(loc.tr(.geminiModelSection))
                 .font(.system(size: 12.5, weight: .semibold))
                 .foregroundColor(.primary)
@@ -755,48 +782,126 @@ public struct SettingsView: View {
                     .font(.system(size: 11.5))
                     .frame(width: 85, alignment: .leading)
 
-                Picker("", selection: Binding(
-                    get: { storageManager.settings.selectedModel },
-                    set: { val in
-                        var s = storageManager.settings
-                        s.selectedModel = val
-                        storageManager.settings = s
-                    }
-                )) {
+                Picker("", selection: pickerSelection) {
                     ForEach(AppSettings.presetModels, id: \.self) { preset in
                         Text(modelDisplayLabel(for: preset)).tag(preset)
                     }
-                    if !AppSettings.presetModels.contains(storageManager.settings.selectedModel) {
-                        Text(storageManager.settings.selectedModel).tag(storageManager.settings.selectedModel)
-                    }
+                    Divider()
+                    Text(isVi ? "Nhập Model ID tuỳ chỉnh..." : "Custom Model ID...").tag("__custom__")
                 }
                 .labelsHidden()
                 .pickerStyle(.menu)
                 .frame(maxWidth: .infinity, alignment: .leading)
             }
 
-            HStack(spacing: 8) {
-                Text(isVi ? "Model tuỳ chỉnh:" : "Custom Model:")
-                    .font(.system(size: 11))
-                    .foregroundColor(.secondary)
-                    .frame(width: 85, alignment: .leading)
-                TextField(loc.tr(.customModelPlaceholder), text: Binding(
-                    get: { storageManager.settings.selectedModel },
-                    set: { val in
-                        var s = storageManager.settings
-                        s.selectedModel = val
-                        storageManager.settings = s
-                    }
-                ))
-                .textFieldStyle(.roundedBorder)
-                .font(.system(size: 11.5, design: .monospaced))
+            if showCustomInput {
+                HStack(spacing: 8) {
+                    Text(isVi ? "Model ID:" : "Model ID:")
+                        .font(.system(size: 11))
+                        .foregroundColor(.secondary)
+                        .frame(width: 85, alignment: .leading)
+                    TextField(loc.tr(.customModelPlaceholder), text: Binding(
+                        get: { storageManager.settings.selectedModel },
+                        set: { val in
+                            var s = storageManager.settings
+                            s.selectedModel = val
+                            storageManager.settings = s
+                        }
+                    ))
+                    .textFieldStyle(.roundedBorder)
+                    .font(.system(size: 11.5, design: .monospaced))
+                }
             }
+        }
+        .padding(9)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(cardBackground)
+    }
 
-            Divider().padding(.vertical, 2)
+    // MARK: - Tab 3: Prompt (Dedicated Spacious System Prompt Editor & Preset Templates)
 
+    private struct PromptPreset: Identifiable {
+        let id: String
+        let titleVi: String
+        let titleEn: String
+        let prompt: String
+    }
+
+    private var promptPresets: [PromptPreset] {
+        [
+            PromptPreset(
+                id: "default",
+                titleVi: "Mặc định — Dịch tự nhiên & chuẩn xác",
+                titleEn: "Default — Natural & Accurate Translation",
+                prompt: AppSettings.defaultSystemPrompt
+            ),
+            PromptPreset(
+                id: "it_tech",
+                titleVi: "Chuyên ngành IT / Phần mềm — Giữ nguyên thuật ngữ & Code",
+                titleEn: "IT & Software Engineering — Preserve Technical Terms & Code",
+                prompt: """
+You are a senior software engineer and technical translator. Translate the user's input accurately into the requested target language.
+Rules:
+1. Return ONLY the translated text without introductory remarks or explanations.
+2. Keep programming keywords, variable/function names, CLI commands, API paths, log identifiers, and standard English IT terms (e.g., commit, pull request, deploy, payload, token, thread) intact where appropriate.
+3. Preserve all code blocks, markdown formatting, bullet points, and line breaks.
+4. If the input is an image (screenshot of code, logs, or UI), extract all visible text and translate naturally while preserving technical structure.
+"""
+            ),
+            PromptPreset(
+                id: "business",
+                titleVi: "Email & Công việc (BPO/Doanh nghiệp) — Văn phong lịch sự, chuyên nghiệp",
+                titleEn: "Business & BPO Communication — Polite & Professional Tone",
+                prompt: """
+You are an executive business and BPO communication translator (experienced with Japanese, English, and Vietnamese corporate workflows). Translate the user's input into the requested target language using a polite, clear, and professional business tone.
+Rules:
+1. Return ONLY the translated text without extra commentary.
+2. Accurately convey honorifics, nuances, action items, deadlines, and client/partner names.
+3. Preserve original bullet points, numbering, and paragraph structure.
+4. If the input is an image (document, chat log, or spreadsheet screenshot), extract all visible text and translate accurately in structured form.
+"""
+            ),
+            PromptPreset(
+                id: "learning",
+                titleVi: "Học ngoại ngữ — Dịch kèm giải thích từ vựng & cấu trúc câu",
+                titleEn: "Language Learning — Translate with Vocabulary & Grammar Notes",
+                prompt: """
+Translate the user's input into the requested target language and provide brief language-learning notes.
+Format your response as follows:
+1. [Bản dịch / Translation]: Natural and accurate translation of the input.
+2. [Từ vựng & Ngữ pháp / Key Vocabulary & Grammar]: 2-4 bullet points explaining key words, idioms, or grammar structures from the source text.
+"""
+            ),
+            PromptPreset(
+                id: "concise",
+                titleVi: "Tóm tắt & Dịch ý chính ngắn gọn",
+                titleEn: "Concise Summary & Core Meaning Translation",
+                prompt: """
+Translate the user's input into the requested target language concisely, focusing on the clearest and most direct expression of the core meaning.
+Rules:
+1. Return ONLY the translated text without introductory remarks.
+2. Eliminate unnecessary filler words while preserving all factual details, numbers, and technical identifiers.
+"""
+            )
+        ]
+    }
+
+    private var currentPromptPresetId: String {
+        let current = storageManager.settings.customSystemPrompt.trimmingCharacters(in: .whitespacesAndNewlines)
+        if let matched = promptPresets.first(where: {
+            $0.prompt.trimmingCharacters(in: .whitespacesAndNewlines) == current
+        }) {
+            return matched.id
+        }
+        return "custom"
+    }
+
+    private var promptTabContent: some View {
+        VStack(alignment: .leading, spacing: 8) {
             HStack {
                 Text(loc.tr(.systemPromptSection))
-                    .font(.system(size: 11.5, weight: .semibold))
+                    .font(.system(size: 13, weight: .semibold))
+                    .foregroundColor(.primary)
                 Spacer()
                 Button(loc.tr(.resetDefaultPromptButton)) {
                     var s = storageManager.settings
@@ -804,9 +909,45 @@ public struct SettingsView: View {
                     storageManager.settings = s
                 }
                 .buttonStyle(.bordered)
-                .controlSize(.mini)
-                .font(.system(size: 10))
+                .controlSize(.small)
+                .font(.system(size: 11))
+                .disabled(currentPromptPresetId == "default")
             }
+
+            Text(isVi
+                 ? "Chọn nhanh mẫu hướng dẫn dịch phù hợp với ngữ cảnh hoặc tự chỉnh sửa trực tiếp trong khung soạn thảo bên dưới."
+                 : "Select a preset translation style below or freely customize the System Prompt in the editor.")
+                .font(.system(size: 11))
+                .foregroundColor(.secondary)
+
+            HStack(spacing: 8) {
+                Text(isVi ? "Mẫu Prompt:" : "Preset Style:")
+                    .font(.system(size: 11.5, weight: .medium))
+                    .frame(width: 85, alignment: .leading)
+
+                Picker("", selection: Binding<String>(
+                    get: { currentPromptPresetId },
+                    set: { selectedId in
+                        if let preset = promptPresets.first(where: { $0.id == selectedId }) {
+                            var s = storageManager.settings
+                            s.customSystemPrompt = preset.prompt
+                            storageManager.settings = s
+                        }
+                    }
+                )) {
+                    ForEach(promptPresets) { preset in
+                        Text(isVi ? preset.titleVi : preset.titleEn).tag(preset.id)
+                    }
+                    if currentPromptPresetId == "custom" {
+                        Divider()
+                        Text(isVi ? "Tuỳ chỉnh (Đang sửa trực tiếp)" : "Custom (Edited)").tag("custom")
+                    }
+                }
+                .labelsHidden()
+                .pickerStyle(.menu)
+                .frame(maxWidth: .infinity, alignment: .leading)
+            }
+            .padding(.vertical, 2)
 
             TextEditor(text: Binding(
                 get: { storageManager.settings.customSystemPrompt },
@@ -816,15 +957,17 @@ public struct SettingsView: View {
                     storageManager.settings = s
                 }
             ))
-            .font(.system(size: 11, design: .monospaced))
-            .frame(height: 68)
-            .cornerRadius(5)
+            .font(.system(size: 11.5, design: .monospaced))
+            .padding(6)
+            .frame(height: 268)
+            .background(Color(nsColor: .textBackgroundColor))
+            .cornerRadius(6)
             .overlay(
-                RoundedRectangle(cornerRadius: 5, style: .continuous)
+                RoundedRectangle(cornerRadius: 6, style: .continuous)
                     .stroke(Color(nsColor: .separatorColor), lineWidth: 0.8)
             )
         }
-        .padding(9)
+        .padding(12)
         .frame(maxWidth: .infinity, alignment: .leading)
         .background(cardBackground)
     }
