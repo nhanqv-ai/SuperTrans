@@ -123,7 +123,7 @@ public struct CursorPopupView: View {
                     Image(systemName: "folder.fill")
                         .font(.system(size: 9, weight: .semibold))
                         .foregroundColor(.accentColor)
-                    Text(compactHeaderLabel(controller.storageManager.activeProject.name, maxLength: 15))
+                    Text(compactHeaderLabel(controller.storageManager.activeProject.name, maxLength: 13))
                         .font(.system(size: 10.5, weight: .medium))
                         .foregroundColor(.primary)
                         .lineLimit(1)
@@ -156,8 +156,21 @@ public struct CursorPopupView: View {
                     .background(RoundedRectangle(cornerRadius: 4).fill(Color.green.opacity(0.14)))
                 }
 
-                // Edit / Teach AI Button
+                // Speak / Text-to-Speech Button (⌘S)
                 if case .completed = controller.state {
+                    Button(action: {
+                        controller.toggleSpeakTranslation()
+                    }) {
+                        Image(systemName: controller.isSpeaking ? "speaker.wave.2.fill" : "speaker.wave.2")
+                            .font(.system(size: 11, weight: .medium))
+                            .foregroundColor(controller.isSpeaking ? .accentColor : .secondary)
+                            .frame(width: 20, height: 20)
+                            .contentShape(Rectangle())
+                    }
+                    .buttonStyle(.plain)
+                    .help(loc.languageCode == "vi" ? "Nghe phát âm bản dịch (⌘S)" : "Speak translation (⌘S)")
+
+                    // Edit / Teach AI Button (⌘E)
                     Button(action: {
                         controller.toggleEditAndTeachMode()
                     }) {
@@ -168,7 +181,7 @@ public struct CursorPopupView: View {
                             .contentShape(Rectangle())
                     }
                     .buttonStyle(.plain)
-                    .help(loc.languageCode == "vi" ? "Sửa bản dịch & Dạy thuật ngữ cho Project này" : "Edit translation & teach glossary for this Project")
+                    .help(loc.languageCode == "vi" ? "Sửa bản dịch & Dạy thuật ngữ cho Project này (⌘E)" : "Edit translation & teach glossary for this Project (⌘E)")
                 }
 
                 // Toggle Original Content Preview
@@ -187,7 +200,7 @@ public struct CursorPopupView: View {
                     .help(controller.showOriginalContent ? loc.tr(.popupHideOriginal) : loc.tr(.popupShowOriginal))
                 }
 
-                // Pin Popup Button
+                // Pin Popup Button (⌘P)
                 Button(action: {
                     controller.isPinned.toggle()
                 }) {
@@ -198,7 +211,7 @@ public struct CursorPopupView: View {
                         .contentShape(Rectangle())
                 }
                 .buttonStyle(.plain)
-                .help(loc.tr(.popupPinTooltip))
+                .help("\(loc.tr(.popupPinTooltip)) (⌘P)")
 
                 // Close Button
                 Button(action: {
@@ -553,7 +566,7 @@ public struct CursorPopupView: View {
             Spacer(minLength: 4)
 
             HStack(spacing: 6) {
-                // Re-translate button
+                // Re-translate button (⌘R)
                 Button(action: {
                     controller.retranslate()
                 }) {
@@ -571,6 +584,7 @@ public struct CursorPopupView: View {
                     .foregroundColor(.primary)
                 }
                 .buttonStyle(.plain)
+                .help("\(loc.tr(.popupRetranslate)) (⌘R)")
 
                 // Copy button (Enter)
                 Button(action: {

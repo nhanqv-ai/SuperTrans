@@ -1,6 +1,7 @@
 import AppKit
 import SwiftUI
 import Combine
+import AVFoundation
 import SuperTransCore
 
 public enum TranslationPopupState: Equatable {
@@ -10,7 +11,7 @@ public enum TranslationPopupState: Equatable {
     case failed(message: String, isMissingKey: Bool)
 }
 
-public final class TranslationSessionController: ObservableObject {
+public final class TranslationSessionController: NSObject, ObservableObject, AVSpeechSynthesizerDelegate {
     @Published public var state: TranslationPopupState = .idle
     @Published public var payload: ClipboardPayload?
     @Published public var targetLanguage: String = AppSettings.defaultTargetLanguage
@@ -23,9 +24,11 @@ public final class TranslationSessionController: ObservableObject {
     @Published public var quickGlossaryTargetDraft: String = ""
     @Published public var didLearnFeedback: Bool = false
     @Published public var activeLearnedItemCount: Int = 0
+    @Published public var isSpeaking: Bool = false
 
     public var currentHistoryItemId: UUID?
     private var activeTask: Task<Void, Never>?
+    private let speechSynthesizer = AVSpeechSynthesizer()
 
     public let storageManager: StorageManager
     public let geminiClient: any GeminiTranslating
@@ -50,6 +53,8 @@ public final class TranslationSessionController: ObservableObject {
         self.autoPasteService = autoPasteService
         self.previousAppTracker = previousAppTracker
         self.targetLanguage = storageManager.settings.targetLanguage
+        super.init()
+        self.speechSynthesizer.delegate = self
     }
 
     public func startTranslation(
@@ -58,6 +63,7 @@ public final class TranslationSessionController: ObservableObject {
         existingItemId: UUID? = nil,
         forceRefresh: Bool = false
     ) {
+        stopSpeaking()
         activeTask?.cancel()
         self.payload = payload
         self.currentHistoryItemId = existingItemId
@@ -313,8 +319,67 @@ public final class TranslationSessionController: ObservableObject {
     }
 
     public func cancelActiveTask() {
+        stopSpeaking()
         activeTask?.cancel()
         activeTask = nil
+    }
+
+    public func toggleSpeakTranslation() {
+        if speechSynthesizer.isSpeaking {
+            stopSpeaking()
+            return
+        }
+        guard case .completed(let translatedText, _, _) = state else { return }
+        let trimmed = translatedText.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return }
+
+        let utterance = AVSpeechUtterance(string: trimmed)
+        let bcp47 = Self.bcp47LanguageTag(for: targetLanguage)
+        if let voice = AVSpeechSynthesisVoice(language: bcp47) {
+            utterance.voice = voice
+        }
+        utterance.rate = AVSpeechUtteranceDefaultSpeechRate
+        isSpeaking = true
+        speechSynthesizer.speak(utterance)
+    }
+
+    public func stopSpeaking() {
+        if speechSynthesizer.isSpeaking {
+            speechSynthesizer.stopSpeaking(at: .immediate)
+        }
+        if isSpeaking {
+            isSpeaking = false
+        }
+    }
+
+    public func speechSynthesizer(_ synthesizer: AVSpeechSynthesizer, didFinish utterance: AVSpeechUtterance) {
+        DispatchQueue.main.async { [weak self] in
+            self?.isSpeaking = false
+        }
+    }
+
+    public func speechSynthesizer(_ synthesizer: AVSpeechSynthesizer, didCancel utterance: AVSpeechUtterance) {
+        DispatchQueue.main.async { [weak self] in
+            self?.isSpeaking = false
+        }
+    }
+
+    private static func bcp47LanguageTag(for code: String) -> String {
+        switch code.lowercased() {
+        case "vi": return "vi-VN"
+        case "en": return "en-US"
+        case "ja": return "ja-JP"
+        case "ko": return "ko-KR"
+        case "zh-cn", "zh": return "zh-CN"
+        case "zh-tw": return "zh-TW"
+        case "fr": return "fr-FR"
+        case "de": return "de-DE"
+        case "es": return "es-ES"
+        case "ru": return "ru-RU"
+        case "th": return "th-TH"
+        case "id": return "id-ID"
+        default: return code
+        }
     }
 
     private func persistResult(
@@ -634,6 +699,26 @@ public final class CursorTranslationPanel: NSPanel, NSWindowDelegate {
             // Return -> Copy translation & close (only when NOT editing text)
             if event.keyCode == 36 && flags.isEmpty && !self.sessionController.isEditingTranslation {
                 self.sessionController.copyTranslationAndDismiss(shouldDismiss: true)
+                return nil
+            }
+            // Cmd + R -> Re-translate
+            if flags == .command && event.charactersIgnoringModifiers?.lowercased() == "r" {
+                self.sessionController.retranslate()
+                return nil
+            }
+            // Cmd + E -> Toggle Edit / Teach AI mode
+            if flags == .command && event.charactersIgnoringModifiers?.lowercased() == "e" {
+                self.sessionController.toggleEditAndTeachMode()
+                return nil
+            }
+            // Cmd + P -> Toggle Pin popup
+            if flags == .command && event.charactersIgnoringModifiers?.lowercased() == "p" {
+                self.sessionController.isPinned.toggle()
+                return nil
+            }
+            // Cmd + S -> Speak / Stop speaking translation (when not editing)
+            if flags == .command && event.charactersIgnoringModifiers?.lowercased() == "s" && !self.sessionController.isEditingTranslation {
+                self.sessionController.toggleSpeakTranslation()
                 return nil
             }
             // Cmd + , -> Preferences
