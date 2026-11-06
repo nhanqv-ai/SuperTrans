@@ -16,6 +16,7 @@ public struct SettingsView: View {
         case general
         case geminiAI
         case prompt
+        case projects
         case ignoredApps
         case about
 
@@ -27,6 +28,7 @@ public struct SettingsView: View {
             case .general: return LocalizationManager.shared.tr(.tabGeneral)
             case .geminiAI: return LocalizationManager.shared.tr(.tabGeminiAI)
             case .prompt: return "Prompt"
+            case .projects: return isVi ? "Dự án" : "Projects"
             case .ignoredApps: return LocalizationManager.shared.tr(.tabIgnoredApps)
             case .about: return isVi ? "Thông tin" : "About"
             }
@@ -37,6 +39,7 @@ public struct SettingsView: View {
             case .general: return "gear"
             case .geminiAI: return "sparkles"
             case .prompt: return "text.bubble"
+            case .projects: return "folder.badge.gearshape"
             case .ignoredApps: return "eye.slash"
             case .about: return "info.circle"
             }
@@ -59,6 +62,9 @@ public struct SettingsView: View {
     @State private var isAccessibilityTrusted: Bool = AXIsProcessTrusted()
     @State private var showingClearConfirmation: Bool = false
     @State private var showingResetConfirmation: Bool = false
+    @State private var newProjectNameInput: String = ""
+    @State private var newGlossarySourceInput: String = ""
+    @State private var newGlossaryTargetInput: String = ""
 
     public init(
         storageManager: StorageManager,
@@ -152,6 +158,8 @@ public struct SettingsView: View {
                     geminiTabContent
                 case .prompt:
                     promptTabContent
+                case .projects:
+                    projectsTabContent
                 case .ignoredApps:
                     ignoredAppsTabContent
                 case .about:
@@ -919,6 +927,242 @@ public struct SettingsView: View {
         .padding(12)
         .frame(maxWidth: .infinity, alignment: .leading)
         .background(cardBackground)
+    }
+
+    // MARK: - Tab 4: Projects & Adaptive Self-Learning (Multi-Project Isolation + Glossary + TM)
+
+    private var projectsTabContent: some View {
+        let activeProj = storageManager.activeProject
+        let projectItems = storageManager.items.filter { $0.projectId == activeProj.id }
+        let verifiedCount = projectItems.filter { $0.isVerified }.count
+        let pinnedCount = projectItems.filter { $0.isPinned }.count
+
+        return VStack(spacing: 8) {
+            // Card 1: Adaptive Learning Toggle & Project Selector / Creator
+            VStack(alignment: .leading, spacing: 8) {
+                HStack {
+                    Text(isVi ? "Quản lý Dự án & Bộ nhớ Tự học AI" : "Projects & Adaptive AI Memory")
+                        .font(.system(size: 12.5, weight: .semibold))
+                        .foregroundColor(.primary)
+                    Spacer()
+                    Toggle(isVi ? "Tự học theo Dự án" : "Adaptive Learning", isOn: Binding(
+                        get: { storageManager.settings.enableAdaptiveLearning },
+                        set: { val in
+                            var s = storageManager.settings
+                            s.enableAdaptiveLearning = val
+                            storageManager.settings = s
+                        }
+                    ))
+                    .toggleStyle(.switch)
+                    .controlSize(.small)
+                    .font(.system(size: 11, weight: .medium))
+                }
+
+                Text(isVi
+                     ? "Mỗi Dự án có Lịch sử, Từ điển thuật ngữ và Bộ nhớ câu mẫu riêng biệt. Càng dịch, ghim hoặc sửa bản dịch trong dự án, AI càng hiểu rõ thuật ngữ và văn phong của dự án đó."
+                     : "Each Project isolates its own History, Glossary, and Translation Memory. The more you translate, pin, or edit translations in a project, the smarter and more consistent AI becomes.")
+                    .font(.system(size: 10.5))
+                    .foregroundColor(.secondary)
+
+                HStack(spacing: 8) {
+                    Text(isVi ? "Dự án đang chọn:" : "Active Project:")
+                        .font(.system(size: 11.5, weight: .medium))
+                        .frame(width: 110, alignment: .leading)
+
+                    Picker("", selection: Binding<UUID>(
+                        get: { activeProj.id },
+                        set: { newId in
+                            storageManager.selectActiveProject(id: newId)
+                        }
+                    )) {
+                        ForEach(storageManager.projects) { proj in
+                            Text("📁 \(proj.name)").tag(proj.id)
+                        }
+                    }
+                    .labelsHidden()
+                    .pickerStyle(.menu)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+
+                    if activeProj.id != TranslationProject.defaultProjectId {
+                        Button(role: .destructive) {
+                            storageManager.deleteProject(id: activeProj.id)
+                        } label: {
+                            Image(systemName: "trash")
+                                .font(.system(size: 11))
+                                .foregroundColor(.red)
+                        }
+                        .buttonStyle(.bordered)
+                        .controlSize(.small)
+                        .help(isVi ? "Xoá dự án này" : "Delete this project")
+                    }
+                }
+
+                HStack(spacing: 6) {
+                    TextField(isVi ? "Tên dự án mới (VD: Dự án NHK, Ngân hàng, Game...)" : "New project name...", text: $newProjectNameInput)
+                        .textFieldStyle(.roundedBorder)
+                        .font(.system(size: 11))
+                        .onSubmit {
+                            createNewProjectFromInput()
+                        }
+
+                    Button(isVi ? "+ Tạo Dự án" : "+ New Project") {
+                        createNewProjectFromInput()
+                    }
+                    .buttonStyle(.borderedProminent)
+                    .controlSize(.small)
+                    .font(.system(size: 11, weight: .medium))
+                    .disabled(newProjectNameInput.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                }
+            }
+            .padding(10)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background(cardBackground)
+
+            // Card 2: Project Context Note & Learning Stats
+            VStack(alignment: .leading, spacing: 6) {
+                HStack {
+                    Text(isVi ? "Ngữ cảnh riêng của Dự án \"\(activeProj.name)\"" : "Context for Project \"\(activeProj.name)\"")
+                        .font(.system(size: 12, weight: .semibold))
+                    Spacer()
+                    Text(isVi
+                         ? "📚 \(activeProj.glossary.count) thuật ngữ · ✨ \(verifiedCount) câu đã dạy · 📌 \(pinnedCount) câu ghim"
+                         : "📚 \(activeProj.glossary.count) terms · ✨ \(verifiedCount) taught · 📌 \(pinnedCount) pinned")
+                        .font(.system(size: 10, weight: .medium))
+                        .foregroundColor(.accentColor)
+                }
+
+                TextField(
+                    isVi ? "Ghi chú chuyên ngành / văn phong cho dự án này (VD: Tài liệu y khoa, giữ nguyên tên thuốc)..." : "Domain / style guidelines for this project...",
+                    text: Binding<String>(
+                        get: { activeProj.domainNote },
+                        set: { newNote in
+                            var updated = activeProj
+                            updated.domainNote = newNote
+                            storageManager.updateProject(updated)
+                        }
+                    )
+                )
+                .textFieldStyle(.roundedBorder)
+                .font(.system(size: 11))
+            }
+            .padding(10)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background(cardBackground)
+
+            // Card 3: Project Glossary (Từ điển Thuật ngữ của Dự án)
+            VStack(alignment: .leading, spacing: 6) {
+                Text(isVi ? "Từ điển Thuật ngữ của Dự án (AI luôn tuân thủ khi dịch)" : "Project Glossary (Strictly enforced during translation)")
+                    .font(.system(size: 12, weight: .semibold))
+
+                HStack(spacing: 6) {
+                    TextField(isVi ? "Từ / Cụm từ gốc (VD: 代表)" : "Source term", text: $newGlossarySourceInput)
+                        .textFieldStyle(.roundedBorder)
+                        .font(.system(size: 11))
+
+                    Image(systemName: "arrow.right")
+                        .font(.system(size: 9, weight: .bold))
+                        .foregroundColor(.secondary)
+
+                    TextField(isVi ? "Nghĩa chuẩn (VD: tổng đài)" : "Target term", text: $newGlossaryTargetInput)
+                        .textFieldStyle(.roundedBorder)
+                        .font(.system(size: 11))
+                        .onSubmit {
+                            addGlossaryEntryFromInput()
+                        }
+
+                    Button(isVi ? "Thêm" : "Add") {
+                        addGlossaryEntryFromInput()
+                    }
+                    .buttonStyle(.borderedProminent)
+                    .controlSize(.small)
+                    .font(.system(size: 11, weight: .medium))
+                    .disabled(
+                        newGlossarySourceInput.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ||
+                        newGlossaryTargetInput.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+                    )
+                }
+
+                ScrollView {
+                    if activeProj.glossary.isEmpty {
+                        VStack(spacing: 4) {
+                            Text(isVi
+                                 ? "Chưa có thuật ngữ nào. Bạn có thể thêm tại đây hoặc bấm nút ✏️ ngay trên Popup dịch."
+                                 : "No glossary terms yet. Add terms here or via the ✏️ button on the translation popup.")
+                                .font(.system(size: 10.5))
+                                .foregroundColor(.secondary)
+                                .multilineTextAlignment(.center)
+                                .padding(.vertical, 18)
+                        }
+                        .frame(maxWidth: .infinity)
+                    } else {
+                        LazyVStack(spacing: 4) {
+                            ForEach(activeProj.glossary) { entry in
+                                HStack(spacing: 8) {
+                                    Text(entry.sourceTerm)
+                                        .font(.system(size: 11, weight: .semibold))
+                                        .foregroundColor(.primary)
+                                        .lineLimit(1)
+
+                                    Image(systemName: "arrow.right")
+                                        .font(.system(size: 9, weight: .bold))
+                                        .foregroundColor(.secondary)
+
+                                    Text(entry.targetTerm)
+                                        .font(.system(size: 11, weight: .medium))
+                                        .foregroundColor(.accentColor)
+                                        .lineLimit(1)
+
+                                    Spacer()
+
+                                    Button(action: {
+                                        storageManager.removeGlossaryEntry(projectId: activeProj.id, entryId: entry.id)
+                                    }) {
+                                        Image(systemName: "trash")
+                                            .font(.system(size: 10))
+                                            .foregroundColor(.red.opacity(0.8))
+                                    }
+                                    .buttonStyle(.plain)
+                                }
+                                .padding(.horizontal, 8)
+                                .padding(.vertical, 4)
+                                .background(RoundedRectangle(cornerRadius: 5).fill(Color.secondary.opacity(0.08)))
+                            }
+                        }
+                        .padding(4)
+                    }
+                }
+                .frame(height: 118)
+                .background(Color(nsColor: .textBackgroundColor))
+                .cornerRadius(6)
+                .overlay(
+                    RoundedRectangle(cornerRadius: 6, style: .continuous)
+                        .stroke(Color(nsColor: .separatorColor), lineWidth: 0.8)
+                )
+            }
+            .padding(10)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background(cardBackground)
+        }
+    }
+
+    private func createNewProjectFromInput() {
+        let name = newProjectNameInput.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !name.isEmpty else { return }
+        _ = storageManager.createProject(name: name)
+        newProjectNameInput = ""
+    }
+
+    private func addGlossaryEntryFromInput() {
+        let src = newGlossarySourceInput.trimmingCharacters(in: .whitespacesAndNewlines)
+        let dst = newGlossaryTargetInput.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !src.isEmpty, !dst.isEmpty else { return }
+        storageManager.addOrUpdateGlossaryEntry(
+            projectId: storageManager.activeProject.id,
+            sourceTerm: src,
+            targetTerm: dst
+        )
+        newGlossarySourceInput = ""
+        newGlossaryTargetInput = ""
     }
 
     private func pasteAndAddKeyFromClipboard() {

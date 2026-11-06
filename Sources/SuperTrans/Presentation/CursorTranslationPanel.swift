@@ -17,6 +17,12 @@ public final class TranslationSessionController: ObservableObject {
     @Published public var isPinned: Bool = false
     @Published public var showOriginalContent: Bool = false
     @Published public var didCopyFeedback: Bool = false
+    @Published public var isEditingTranslation: Bool = false
+    @Published public var editedTranslationDraft: String = ""
+    @Published public var quickGlossarySourceDraft: String = ""
+    @Published public var quickGlossaryTargetDraft: String = ""
+    @Published public var didLearnFeedback: Bool = false
+    @Published public var activeLearnedItemCount: Int = 0
 
     public var currentHistoryItemId: UUID?
     private var activeTask: Task<Void, Never>?
@@ -56,12 +62,18 @@ public final class TranslationSessionController: ObservableObject {
         self.payload = payload
         self.currentHistoryItemId = existingItemId
         self.didCopyFeedback = false
+        self.isEditingTranslation = false
         let lang = overrideTargetLanguage ?? storageManager.settings.targetLanguage
         self.targetLanguage = lang
+        let activeProjectId = storageManager.settings.activeProjectId
 
-        // Check History Cache first when not forcing a re-translation
+        // Check Project-Isolated History Cache first when not forcing a re-translation
         if !forceRefresh, case .text(let sourceText) = payload,
-           let cachedItem = storageManager.findCachedTranslation(sourceText: sourceText, targetLanguage: lang) {
+           let cachedItem = storageManager.findCachedTranslation(
+               sourceText: sourceText,
+               targetLanguage: lang,
+               projectId: activeProjectId
+           ) {
             self.currentHistoryItemId = cachedItem.id
             self.storageManager.touchItem(id: cachedItem.id)
             self.state = .completed(
@@ -77,6 +89,19 @@ public final class TranslationSessionController: ObservableObject {
         self.onContentSizeChanged?()
 
         let currentSettings = storageManager.settings
+        let sourceTextForContext: String?
+        if case .text(let src) = payload {
+            sourceTextForContext = src
+        } else {
+            sourceTextForContext = nil
+        }
+        let learningContext = storageManager.buildLearningContext(
+            for: sourceTextForContext,
+            targetLanguage: lang,
+            projectId: activeProjectId
+        )
+        self.activeLearnedItemCount = (learningContext?.matchedGlossary.count ?? 0) + (learningContext?.fewShotExamples.count ?? 0)
+
         activeTask = Task { [weak self] in
             guard let self = self else { return }
             do {
@@ -86,14 +111,16 @@ public final class TranslationSessionController: ObservableObject {
                     response = try await self.geminiClient.translateText(
                         sourceText,
                         targetLanguage: lang,
-                        settings: currentSettings
+                        settings: currentSettings,
+                        learningContext: learningContext
                     )
                 case .image(let pngData, _, _, _):
                     response = try await self.geminiClient.translateImage(
                         imageData: pngData,
                         mimeType: "image/png",
                         targetLanguage: lang,
-                        settings: currentSettings
+                        settings: currentSettings,
+                        learningContext: learningContext
                     )
                 }
 
@@ -109,7 +136,8 @@ public final class TranslationSessionController: ObservableObject {
                         payload: payload,
                         translatedText: response.translatedText,
                         targetLanguage: lang,
-                        modelUsed: response.modelUsed
+                        modelUsed: response.modelUsed,
+                        projectId: activeProjectId
                     )
                     self.onContentSizeChanged?()
                 }
@@ -141,6 +169,7 @@ public final class TranslationSessionController: ObservableObject {
         self.currentHistoryItemId = item.id
         self.targetLanguage = item.targetLanguage
         self.didCopyFeedback = false
+        self.isEditingTranslation = false
         switch item.contentType {
         case .text:
             self.payload = .text(item.sourceText ?? "")
@@ -186,9 +215,75 @@ public final class TranslationSessionController: ObservableObject {
         retranslate()
     }
 
+    public func selectProjectAndRetranslate(_ projectId: UUID) {
+        storageManager.selectActiveProject(id: projectId)
+        objectWillChange.send()
+        guard let payload = payload else { return }
+        startTranslation(
+            payload: payload,
+            overrideTargetLanguage: targetLanguage,
+            existingItemId: nil,
+            forceRefresh: false
+        )
+    }
+
+    public func toggleEditAndTeachMode() {
+        guard case .completed(let translatedText, _, _) = state else { return }
+        if isEditingTranslation {
+            isEditingTranslation = false
+        } else {
+            editedTranslationDraft = translatedText
+            quickGlossarySourceDraft = ""
+            quickGlossaryTargetDraft = ""
+            isEditingTranslation = true
+        }
+        onContentSizeChanged?()
+    }
+
+    public func saveEditedTranslationAndGlossary() {
+        guard case .completed(let currentText, let modelUsed, let keyMasked) = state else { return }
+        let finalTranslation = editedTranslationDraft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+            ? currentText
+            : editedTranslationDraft.trimmingCharacters(in: .whitespacesAndNewlines)
+
+        self.state = .completed(
+            translatedText: finalTranslation,
+            modelUsed: modelUsed,
+            keyMasked: keyMasked
+        )
+
+        if let id = currentHistoryItemId {
+            storageManager.markTranslationVerified(id: id, correctedText: finalTranslation)
+        }
+
+        let srcTerm = quickGlossarySourceDraft.trimmingCharacters(in: .whitespacesAndNewlines)
+        let dstTerm = quickGlossaryTargetDraft.trimmingCharacters(in: .whitespacesAndNewlines)
+        if !srcTerm.isEmpty && !dstTerm.isEmpty {
+            storageManager.addOrUpdateGlossaryEntry(
+                projectId: storageManager.settings.activeProjectId,
+                sourceTerm: srcTerm,
+                targetTerm: dstTerm
+            )
+        }
+
+        quickGlossarySourceDraft = ""
+        quickGlossaryTargetDraft = ""
+        isEditingTranslation = false
+        didLearnFeedback = true
+        objectWillChange.send()
+        onContentSizeChanged?()
+
+        DispatchQueue.main.asyncAfter(deadline: .now() + 1.8) { [weak self] in
+            self?.didLearnFeedback = false
+        }
+    }
+
     public func copyTranslationAndDismiss(shouldDismiss: Bool = true) {
         guard case .completed(let translatedText, _, _) = state else { return }
         _ = pasteboardWriter.writeText(translatedText)
+        if let id = currentHistoryItemId {
+            storageManager.incrementUsageCount(id: id)
+        }
         didCopyFeedback = true
         if shouldDismiss && !isPinned {
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.12) { [weak self] in
@@ -204,6 +299,9 @@ public final class TranslationSessionController: ObservableObject {
     public func autoPasteTranslationAndDismiss() {
         guard case .completed(let translatedText, _, _) = state else { return }
         _ = pasteboardWriter.writeText(translatedText)
+        if let id = currentHistoryItemId {
+            storageManager.incrementUsageCount(id: id)
+        }
         let targetApp = previousAppTracker.previousApp
         onDismissPopup?()
         if autoPasteService.isAccessibilityTrusted {
@@ -220,7 +318,8 @@ public final class TranslationSessionController: ObservableObject {
         payload: ClipboardPayload,
         translatedText: String,
         targetLanguage: String,
-        modelUsed: String
+        modelUsed: String,
+        projectId: UUID
     ) {
         if let existingId = currentHistoryItemId {
             storageManager.updateTranslation(
@@ -240,7 +339,8 @@ public final class TranslationSessionController: ObservableObject {
                 translatedText: translatedText,
                 targetLanguage: targetLanguage,
                 modelUsed: modelUsed,
-                byteSize: srcText.utf8.count
+                byteSize: srcText.utf8.count,
+                projectId: projectId
             )
             currentHistoryItemId = item.id
             storageManager.addTranslation(item: item, imageData: nil, thumbData: nil)
@@ -258,7 +358,8 @@ public final class TranslationSessionController: ObservableObject {
                 thumbnailFileName: "\(id.uuidString)_thumb.png",
                 imageWidth: width,
                 imageHeight: height,
-                byteSize: pngData.count
+                byteSize: pngData.count,
+                projectId: projectId
             )
             currentHistoryItemId = item.id
             storageManager.addTranslation(item: item, imageData: pngData, thumbData: thumbData)
@@ -428,8 +529,9 @@ public final class CursorTranslationPanel: NSPanel, NSWindowDelegate {
         let width = max(Self.minWidth, min(savedWidth ?? Self.defaultWidth, Self.maxWidth))
 
         if let savedHeight = settings.popupHeight {
-            let clampedHeight = max(Self.minHeight, min(CGFloat(savedHeight), Self.maxHeight))
-            return NSSize(width: width, height: clampedHeight)
+            let baseHeight = max(Self.minHeight, min(CGFloat(savedHeight), Self.maxHeight))
+            let finalHeight = sessionController.isEditingTranslation ? max(330, baseHeight) : baseHeight
+            return NSSize(width: width, height: finalHeight)
         }
 
         switch sessionController.state {
@@ -442,7 +544,8 @@ public final class CursorTranslationPanel: NSPanel, NSWindowDelegate {
             let lineCount = translatedText.components(separatedBy: .newlines).count
             let estimatedTextHeight = max(56, min(280, CGFloat((charCount / 48) + lineCount) * 20))
             let originalExtra: CGFloat = sessionController.showOriginalContent ? 110 : 0
-            let totalHeight = min(480, max(185, 128 + estimatedTextHeight + originalExtra))
+            let editExtra: CGFloat = sessionController.isEditingTranslation ? 130 : 0
+            let totalHeight = min(520, max(185, 128 + estimatedTextHeight + originalExtra + editExtra))
             return NSSize(width: width, height: totalHeight)
         }
     }
@@ -516,13 +619,17 @@ public final class CursorTranslationPanel: NSPanel, NSWindowDelegate {
                 self.dismiss()
                 return nil
             }
-            // Cmd + Return -> Auto-Paste translation
+            // Cmd + Return -> Save edit if in edit mode, otherwise Auto-Paste translation
             if event.keyCode == 36 && flags == .command {
-                self.sessionController.autoPasteTranslationAndDismiss()
+                if self.sessionController.isEditingTranslation {
+                    self.sessionController.saveEditedTranslationAndGlossary()
+                } else {
+                    self.sessionController.autoPasteTranslationAndDismiss()
+                }
                 return nil
             }
-            // Return -> Copy translation & close
-            if event.keyCode == 36 && flags.isEmpty {
+            // Return -> Copy translation & close (only when NOT editing text)
+            if event.keyCode == 36 && flags.isEmpty && !self.sessionController.isEditingTranslation {
                 self.sessionController.copyTranslationAndDismiss(shouldDismiss: true)
                 return nil
             }

@@ -84,7 +84,78 @@ public struct CursorPopupView: View {
             .menuStyle(.borderlessButton)
             .fixedSize()
 
+            // Project Switcher Menu
+            Menu {
+                ForEach(controller.storageManager.projects) { project in
+                    Button(action: {
+                        if controller.storageManager.activeProject.id != project.id {
+                            controller.selectProjectAndRetranslate(project.id)
+                        }
+                    }) {
+                        HStack {
+                            Text("📁 \(project.name)")
+                            if controller.storageManager.activeProject.id == project.id {
+                                Image(systemName: "checkmark")
+                            }
+                        }
+                    }
+                }
+                Divider()
+                Button(action: {
+                    controller.onDismissPopup?()
+                    controller.onOpenSettings?()
+                }) {
+                    Text(loc.languageCode == "vi" ? "⚙️ Quản lý Dự án & Từ điển..." : "⚙️ Manage Projects & Glossary...")
+                }
+            } label: {
+                HStack(spacing: 4) {
+                    Image(systemName: "folder.fill")
+                        .font(.system(size: 9, weight: .semibold))
+                        .foregroundColor(.accentColor)
+                    Text(controller.storageManager.activeProject.name)
+                        .font(.system(size: 10.5, weight: .medium))
+                        .foregroundColor(.primary)
+                        .lineLimit(1)
+                    Image(systemName: "chevron.down")
+                        .font(.system(size: 7.5, weight: .bold))
+                        .foregroundColor(.secondary)
+                }
+                .padding(.horizontal, 6)
+                .padding(.vertical, 3)
+                .background(
+                    RoundedRectangle(cornerRadius: 5, style: .continuous)
+                        .fill(Color.accentColor.opacity(0.12))
+                )
+            }
+            .menuStyle(.borderlessButton)
+            .fixedSize()
+            .help(loc.languageCode == "vi" ? "Chọn Dự án (tách biệt bộ nhớ học & thuật ngữ)" : "Select Project (isolated learning memory & glossary)")
+
             Spacer()
+
+            if controller.didLearnFeedback {
+                Text(loc.languageCode == "vi" ? "✓ Đã dạy AI" : "✓ Learned")
+                    .font(.system(size: 10, weight: .semibold))
+                    .foregroundColor(.green)
+                    .padding(.horizontal, 6)
+                    .padding(.vertical, 2)
+                    .background(RoundedRectangle(cornerRadius: 4).fill(Color.green.opacity(0.14)))
+            }
+
+            // Edit / Teach AI Button
+            if case .completed = controller.state {
+                Button(action: {
+                    controller.toggleEditAndTeachMode()
+                }) {
+                    Image(systemName: controller.isEditingTranslation ? "pencil.circle.fill" : "pencil")
+                        .font(.system(size: 11, weight: .medium))
+                        .foregroundColor(controller.isEditingTranslation ? .accentColor : .secondary)
+                        .padding(4)
+                        .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .help(loc.languageCode == "vi" ? "Sửa bản dịch & Dạy thuật ngữ cho Project này" : "Edit translation & teach glossary for this Project")
+            }
 
             // Toggle Original Content Preview
             if controller.payload != nil {
@@ -220,22 +291,98 @@ public struct CursorPopupView: View {
     }
 
     private func completedView(translatedText: String) -> some View {
-        VStack(alignment: .leading, spacing: 8) {
+        let isVi = loc.languageCode == "vi"
+        return VStack(alignment: .leading, spacing: 8) {
             if controller.showOriginalContent, let payload = controller.payload {
                 sourceExpandedPreview(payload: payload)
                 Divider().opacity(0.4)
             }
 
-            ScrollView(.vertical, showsIndicators: true) {
-                Text(translatedText)
-                    .font(.system(size: 13, weight: .regular))
-                    .foregroundColor(.primary)
-                    .lineSpacing(3)
-                    .textSelection(.enabled)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .padding(.vertical, 2)
+            if controller.isEditingTranslation {
+                VStack(alignment: .leading, spacing: 8) {
+                    HStack {
+                        Image(systemName: "sparkles")
+                            .font(.system(size: 10, weight: .bold))
+                            .foregroundColor(.accentColor)
+                        Text(isVi
+                             ? "Sửa bản dịch chuẩn (Dạy câu mẫu cho Project \"\(controller.storageManager.activeProject.name)\"):"
+                             : "Edit Gold Translation (Teach example for Project \"\(controller.storageManager.activeProject.name)\"):")
+                            .font(.system(size: 10.5, weight: .semibold))
+                            .foregroundColor(.secondary)
+                        Spacer()
+                    }
+
+                    TextEditor(text: $controller.editedTranslationDraft)
+                        .font(.system(size: 12.5))
+                        .frame(minHeight: 70, maxHeight: .infinity)
+                        .padding(6)
+                        .background(RoundedRectangle(cornerRadius: 6).fill(Color(nsColor: .textBackgroundColor)))
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 6)
+                                .stroke(Color.accentColor.opacity(0.45), lineWidth: 1)
+                        )
+
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text(isVi ? "Ghim nhanh Thuật ngữ vào Từ điển Project (Tuỳ chọn):" : "Quick-add Term to Project Glossary (Optional):")
+                            .font(.system(size: 10, weight: .semibold))
+                            .foregroundColor(.secondary)
+
+                        HStack(spacing: 6) {
+                            TextField(isVi ? "Từ gốc (VD: 代表)" : "Source term", text: $controller.quickGlossarySourceDraft)
+                                .textFieldStyle(.roundedBorder)
+                                .font(.system(size: 11))
+                            Image(systemName: "arrow.right")
+                                .font(.system(size: 9, weight: .bold))
+                                .foregroundColor(.secondary)
+                            TextField(isVi ? "Nghĩa chuẩn (VD: tổng đài)" : "Target term", text: $controller.quickGlossaryTargetDraft)
+                                .textFieldStyle(.roundedBorder)
+                                .font(.system(size: 11))
+                        }
+                    }
+
+                    HStack(spacing: 8) {
+                        Spacer()
+                        Button(action: {
+                            controller.toggleEditAndTeachMode()
+                        }) {
+                            Text(isVi ? "Huỷ" : "Cancel")
+                                .font(.system(size: 11, weight: .medium))
+                                .padding(.horizontal, 10)
+                                .padding(.vertical, 4)
+                                .background(RoundedRectangle(cornerRadius: 5).fill(Color.secondary.opacity(0.14)))
+                        }
+                        .buttonStyle(.plain)
+
+                        Button(action: {
+                            controller.saveEditedTranslationAndGlossary()
+                        }) {
+                            HStack(spacing: 4) {
+                                Image(systemName: "checkmark.seal.fill")
+                                    .font(.system(size: 10))
+                                Text(isVi ? "Lưu & Dạy AI" : "Save & Teach AI")
+                                    .font(.system(size: 11, weight: .semibold))
+                            }
+                            .padding(.horizontal, 12)
+                            .padding(.vertical, 4)
+                            .background(RoundedRectangle(cornerRadius: 5).fill(Color.accentColor))
+                            .foregroundColor(.white)
+                        }
+                        .buttonStyle(.plain)
+                    }
+                }
+                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+            } else {
+                ScrollView(.vertical, showsIndicators: true) {
+                    Text(translatedText)
+                        .font(.system(size: 13, weight: .regular))
+                        .foregroundColor(.primary)
+                        .lineSpacing(3)
+                        .textSelection(.enabled)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .padding(.vertical, 2)
+                }
+                .frame(maxWidth: .infinity, minHeight: 54, maxHeight: .infinity)
             }
-            .frame(maxWidth: .infinity, minHeight: 54, maxHeight: .infinity)
         }
         .padding(.horizontal, 14)
         .padding(.vertical, 10)

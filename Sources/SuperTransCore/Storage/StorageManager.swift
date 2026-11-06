@@ -3,9 +3,13 @@ import Combine
 
 public protocol StorageManaging: AnyObject, ObservableObject {
     var items: [TranslationItem] { get }
+    var projects: [TranslationProject] { get }
+    var activeProject: TranslationProject { get }
     var settings: AppSettings { get set }
-    func findCachedTranslation(sourceText: String, targetLanguage: String) -> TranslationItem?
+    func findCachedTranslation(sourceText: String, targetLanguage: String, projectId: UUID?) -> TranslationItem?
     func touchItem(id: UUID)
+    func incrementUsageCount(id: UUID)
+    func markTranslationVerified(id: UUID, correctedText: String)
     func addTranslation(item: TranslationItem, imageData: Data?, thumbData: Data?)
     func updateTranslation(id: UUID, translatedText: String, targetLanguage: String, modelUsed: String?)
     func togglePin(id: UUID)
@@ -24,12 +28,28 @@ public protocol StorageManaging: AnyObject, ObservableObject {
 public final class StorageManager: ObservableObject, StorageManaging, @unchecked Sendable {
     private let lock = NSRecursiveLock()
     private var _items: [TranslationItem] = []
+    private var _projects: [TranslationProject] = [TranslationProject.makeDefaultProject()]
     private var _settings: AppSettings
 
     public var items: [TranslationItem] {
         lock.lock()
         defer { lock.unlock() }
         return _items
+    }
+
+    public var projects: [TranslationProject] {
+        lock.lock()
+        defer { lock.unlock() }
+        return _projects
+    }
+
+    public var activeProject: TranslationProject {
+        lock.lock()
+        defer { lock.unlock() }
+        if let found = _projects.first(where: { $0.id == _settings.activeProjectId }) {
+            return found
+        }
+        return _projects.first ?? TranslationProject.makeDefaultProject()
     }
 
     public var settings: AppSettings {
@@ -54,6 +74,7 @@ public final class StorageManager: ObservableObject, StorageManaging, @unchecked
     public let imagesDirectory: URL
     public let thumbnailsDirectory: URL
     public let metadataURL: URL
+    public let projectsURL: URL
     public let settingsURL: URL
 
     private let fileQueue = DispatchQueue(label: "com.nhanqv.supertrans.storage.fileio", qos: .utility)
@@ -68,6 +89,7 @@ public final class StorageManager: ObservableObject, StorageManaging, @unchecked
         self.imagesDirectory = dir.appendingPathComponent("images", isDirectory: true)
         self.thumbnailsDirectory = dir.appendingPathComponent("thumbnails", isDirectory: true)
         self.metadataURL = dir.appendingPathComponent("metadata.json")
+        self.projectsURL = dir.appendingPathComponent("projects.json")
         self.settingsURL = dir.appendingPathComponent("settings.json")
 
         imageCache.countLimit = 50
@@ -117,13 +139,19 @@ public final class StorageManager: ObservableObject, StorageManaging, @unchecked
         try? FileManager.default.createDirectory(at: thumbnailsDirectory, withIntermediateDirectories: true)
     }
 
-    public func findCachedTranslation(sourceText: String, targetLanguage: String) -> TranslationItem? {
+    public func findCachedTranslation(
+        sourceText: String,
+        targetLanguage: String,
+        projectId: UUID? = nil
+    ) -> TranslationItem? {
         let normalizedSource = sourceText.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !normalizedSource.isEmpty else { return nil }
         lock.lock()
         defer { lock.unlock() }
+        let targetProjectId = projectId ?? _settings.activeProjectId
         return _items.first { item in
             guard item.contentType == .text,
+                  item.projectId == targetProjectId,
                   item.targetLanguage == targetLanguage,
                   let existingSource = item.sourceText?.trimmingCharacters(in: .whitespacesAndNewlines) else {
                 return false
@@ -138,8 +166,162 @@ public final class StorageManager: ObservableObject, StorageManaging, @unchecked
         guard let idx = _items.firstIndex(where: { $0.id == id }) else { return }
         var item = _items.remove(at: idx)
         item.createdAt = Date()
+        item.usageCount += 1
         _items.insert(item, at: 0)
         saveMetadata()
+        notifyChange()
+    }
+
+    public func incrementUsageCount(id: UUID) {
+        lock.lock()
+        defer { lock.unlock() }
+        guard let idx = _items.firstIndex(where: { $0.id == id }) else { return }
+        _items[idx].usageCount += 1
+        saveMetadata()
+        notifyChange()
+    }
+
+    public func markTranslationVerified(id: UUID, correctedText: String) {
+        let trimmed = correctedText.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return }
+        lock.lock()
+        defer { lock.unlock() }
+        guard let idx = _items.firstIndex(where: { $0.id == id }) else { return }
+        var item = _items.remove(at: idx)
+        item.translatedText = trimmed
+        item.isVerified = true
+        item.usageCount += 1
+        item.createdAt = Date()
+        _items.insert(item, at: 0)
+        saveMetadata()
+        notifyChange()
+    }
+
+    public func buildLearningContext(
+        for sourceText: String?,
+        targetLanguage: String,
+        projectId: UUID? = nil
+    ) -> ProjectLearningContext? {
+        lock.lock()
+        let enabled = _settings.enableAdaptiveLearning
+        let targetProjId = projectId ?? _settings.activeProjectId
+        let proj = _projects.first(where: { $0.id == targetProjId }) ?? _projects.first ?? TranslationProject.makeDefaultProject()
+        let snapshotItems = _items
+        lock.unlock()
+
+        guard enabled else { return nil }
+        return ProjectMemoryRetriever.retrieveContext(
+            project: proj,
+            sourceText: sourceText,
+            targetLanguage: targetLanguage,
+            projectItems: snapshotItems
+        )
+    }
+
+    // MARK: - Project & Glossary Management
+
+    public func selectActiveProject(id: UUID) {
+        lock.lock()
+        guard _projects.contains(where: { $0.id == id }) else {
+            lock.unlock()
+            return
+        }
+        _settings.activeProjectId = id
+        saveSettings()
+        lock.unlock()
+        notifyChange()
+    }
+
+    @discardableResult
+    public func createProject(name: String, domainNote: String = "") -> TranslationProject {
+        let trimmedName = name.trimmingCharacters(in: .whitespacesAndNewlines)
+        let project = TranslationProject(
+            name: trimmedName.isEmpty ? "Dự án mới" : trimmedName,
+            domainNote: domainNote
+        )
+        lock.lock()
+        _projects.append(project)
+        _settings.activeProjectId = project.id
+        saveProjects()
+        saveSettings()
+        lock.unlock()
+        notifyChange()
+        return project
+    }
+
+    public func updateProject(_ project: TranslationProject) {
+        lock.lock()
+        if let idx = _projects.firstIndex(where: { $0.id == project.id }) {
+            _projects[idx] = project
+            saveProjects()
+        }
+        lock.unlock()
+        notifyChange()
+    }
+
+    public func deleteProject(id: UUID) {
+        guard id != TranslationProject.defaultProjectId else { return }
+        lock.lock()
+        _projects.removeAll { $0.id == id }
+        if _projects.isEmpty {
+            _projects = [TranslationProject.makeDefaultProject()]
+        }
+        if _settings.activeProjectId == id {
+            _settings.activeProjectId = TranslationProject.defaultProjectId
+            saveSettings()
+        }
+        let removedItems = _items.filter { $0.projectId == id }
+        _items.removeAll { $0.projectId == id }
+        for item in removedItems {
+            deleteImageFiles(for: item)
+        }
+        saveProjects()
+        saveMetadata()
+        lock.unlock()
+        notifyChange()
+    }
+
+    public func addOrUpdateGlossaryEntry(
+        projectId: UUID? = nil,
+        sourceTerm: String,
+        targetTerm: String,
+        note: String? = nil
+    ) {
+        let src = sourceTerm.trimmingCharacters(in: .whitespacesAndNewlines)
+        let dst = targetTerm.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !src.isEmpty, !dst.isEmpty else { return }
+
+        lock.lock()
+        let targetId = projectId ?? _settings.activeProjectId
+        guard let pIdx = _projects.firstIndex(where: { $0.id == targetId }) else {
+            lock.unlock()
+            return
+        }
+        if let gIdx = _projects[pIdx].glossary.firstIndex(where: {
+            $0.sourceTerm.caseInsensitiveCompare(src) == .orderedSame
+        }) {
+            _projects[pIdx].glossary[gIdx].sourceTerm = src
+            _projects[pIdx].glossary[gIdx].targetTerm = dst
+            if let note = note {
+                let trimmedNote = note.trimmingCharacters(in: .whitespacesAndNewlines)
+                _projects[pIdx].glossary[gIdx].note = trimmedNote.isEmpty ? nil : trimmedNote
+            }
+        } else {
+            let entry = GlossaryEntry(sourceTerm: src, targetTerm: dst, note: note)
+            _projects[pIdx].glossary.insert(entry, at: 0)
+        }
+        saveProjects()
+        lock.unlock()
+        notifyChange()
+    }
+
+    public func removeGlossaryEntry(projectId: UUID, entryId: UUID) {
+        lock.lock()
+        if let pIdx = _projects.firstIndex(where: { $0.id == projectId }) {
+            _projects[pIdx].glossary.removeAll { $0.id == entryId }
+            saveProjects()
+        }
+        lock.unlock()
         notifyChange()
     }
 
@@ -156,10 +338,11 @@ public final class StorageManager: ObservableObject, StorageManaging, @unchecked
             imageCache.setObject(imgData as NSData, forKey: imgName as NSString)
         }
 
-        // Deduplicate identical source text + target language
+        // Deduplicate identical source text + target language within the same project
         if item.contentType == .text, let sourceText = item.sourceText, !sourceText.isEmpty {
             if let existingIdx = _items.firstIndex(where: {
                 $0.contentType == .text &&
+                $0.projectId == item.projectId &&
                 $0.sourceText == sourceText &&
                 $0.targetLanguage == item.targetLanguage
             }) {
@@ -363,11 +546,38 @@ public final class StorageManager: ObservableObject, StorageManaging, @unchecked
     }
 
     private func loadFromDisk() {
+        if let pData = try? Data(contentsOf: projectsURL),
+           let loadedProjects = try? decoder.decode([TranslationProject].self, from: pData),
+           !loadedProjects.isEmpty {
+            var projs = loadedProjects
+            if !projs.contains(where: { $0.id == TranslationProject.defaultProjectId }) {
+                projs.insert(TranslationProject.makeDefaultProject(), at: 0)
+            }
+            _projects = projs
+        } else {
+            _projects = [TranslationProject.makeDefaultProject()]
+        }
+
+        if !_projects.contains(where: { $0.id == _settings.activeProjectId }) {
+            _settings.activeProjectId = TranslationProject.defaultProjectId
+        }
+
         guard let data = try? Data(contentsOf: metadataURL),
               let loaded = try? decoder.decode([TranslationItem].self, from: data) else {
             return
         }
         _items = loaded
+    }
+
+    private func saveProjects() {
+        let snapshot = _projects
+        let url = projectsURL
+        let enc = encoder
+        fileQueue.async {
+            if let data = try? enc.encode(snapshot) {
+                try? data.write(to: url, options: .atomic)
+            }
+        }
     }
 
     private func saveMetadata() {

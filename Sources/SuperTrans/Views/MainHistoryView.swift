@@ -43,6 +43,7 @@ public struct MainHistoryView: View {
     @State private var selectedIndex: Int? = nil
     @State private var localKeyMonitor: Any? = nil
     @State private var hostWindow: NSWindow? = nil
+    @State private var showAllProjectsInHistory: Bool = false
 
     public init(
         storageManager: StorageManager,
@@ -67,7 +68,11 @@ public struct MainHistoryView: View {
     }
 
     public var partitionedItems: (pinned: [TranslationItem], recent: [TranslationItem]) {
-        let (pinned, recent) = SearchEngine.partition(items: storageManager.items, query: searchText)
+        let activeProjId = storageManager.activeProject.id
+        let baseItems = showAllProjectsInHistory
+            ? storageManager.items
+            : storageManager.items.filter { $0.projectId == activeProjId }
+        let (pinned, recent) = SearchEngine.partition(items: baseItems, query: searchText)
         let maxDisplay = storageManager.settings.displayCapacity
         let cappedRecent = maxDisplay > 0 ? Array(recent.prefix(maxDisplay)) : recent
         return (pinned: pinned, recent: cappedRecent)
@@ -85,6 +90,7 @@ public struct MainHistoryView: View {
         ScrollViewReader { proxy in
             VStack(spacing: 0) {
                 headerBar
+                projectSelectorBar
                 searchBarSection
                 if updateManager.shouldShowBanner {
                     updateBannerView
@@ -266,6 +272,88 @@ public struct MainHistoryView: View {
         }
         .padding(.horizontal, 14)
         .padding(.top, 10)
+        .padding(.bottom, 6)
+    }
+
+    private var projectSelectorBar: some View {
+        let isVi = loc.languageCode == "vi"
+        let activeProject = storageManager.activeProject
+        let verifiedOrPinnedCount = storageManager.items.filter {
+            $0.projectId == activeProject.id && ($0.isVerified || $0.isPinned)
+        }.count
+        let glossaryCount = activeProject.glossary.count
+
+        return HStack(spacing: 6) {
+            Menu {
+                ForEach(storageManager.projects) { project in
+                    Button(action: {
+                        storageManager.selectActiveProject(id: project.id)
+                    }) {
+                        HStack {
+                            Text("📁 \(project.name)")
+                            if activeProject.id == project.id {
+                                Image(systemName: "checkmark")
+                            }
+                        }
+                    }
+                }
+                Divider()
+                Button(action: {
+                    onOpenSettings?()
+                }) {
+                    Text(isVi ? "⚙️ Quản lý Dự án & Từ điển..." : "⚙️ Manage Projects & Glossary...")
+                }
+            } label: {
+                HStack(spacing: 4) {
+                    Image(systemName: "folder.fill")
+                        .font(.system(size: 10, weight: .semibold))
+                        .foregroundColor(.accentColor)
+                    Text(activeProject.name)
+                        .font(.system(size: 11, weight: .semibold))
+                        .foregroundColor(.primary)
+                        .lineLimit(1)
+                    Image(systemName: "chevron.down")
+                        .font(.system(size: 7.5, weight: .bold))
+                        .foregroundColor(.secondary)
+                }
+                .padding(.horizontal, 7)
+                .padding(.vertical, 3)
+                .background(
+                    RoundedRectangle(cornerRadius: 5, style: .continuous)
+                        .fill(Color.accentColor.opacity(0.12))
+                )
+            }
+            .menuStyle(.borderlessButton)
+            .fixedSize()
+
+            Text(isVi
+                 ? "\(glossaryCount) thuật ngữ · \(verifiedOrPinnedCount) câu mẫu"
+                 : "\(glossaryCount) terms · \(verifiedOrPinnedCount) examples")
+                .font(.system(size: 10))
+                .foregroundColor(.secondary)
+                .lineLimit(1)
+
+            Spacer()
+
+            Button(action: {
+                showAllProjectsInHistory.toggle()
+            }) {
+                Text(showAllProjectsInHistory
+                     ? (isVi ? "Tất cả dự án" : "All projects")
+                     : (isVi ? "Chỉ dự án này" : "This project"))
+                    .font(.system(size: 10, weight: .medium))
+                    .foregroundColor(showAllProjectsInHistory ? .accentColor : .secondary)
+                    .padding(.horizontal, 6)
+                    .padding(.vertical, 2)
+                    .background(
+                        RoundedRectangle(cornerRadius: 4)
+                            .fill(showAllProjectsInHistory ? Color.accentColor.opacity(0.14) : Color.secondary.opacity(0.1))
+                    )
+            }
+            .buttonStyle(.plain)
+            .help(isVi ? "Bật/tắt lọc lịch sử theo dự án đang chọn" : "Toggle filtering history by active project")
+        }
+        .padding(.horizontal, 14)
         .padding(.bottom, 6)
     }
 

@@ -51,20 +51,41 @@ public protocol GeminiTranslating: AnyObject, Sendable {
     func translateText(
         _ text: String,
         targetLanguage: String,
-        settings: AppSettings
+        settings: AppSettings,
+        learningContext: ProjectLearningContext?
     ) async throws -> GeminiTranslationResponse
 
     func translateImage(
         imageData: Data,
         mimeType: String,
         targetLanguage: String,
-        settings: AppSettings
+        settings: AppSettings,
+        learningContext: ProjectLearningContext?
     ) async throws -> GeminiTranslationResponse
 
     func testAPIKey(
         _ apiKey: String,
         model: String
     ) async -> Result<String, GeminiError>
+}
+
+public extension GeminiTranslating {
+    func translateText(
+        _ text: String,
+        targetLanguage: String,
+        settings: AppSettings
+    ) async throws -> GeminiTranslationResponse {
+        try await translateText(text, targetLanguage: targetLanguage, settings: settings, learningContext: nil)
+    }
+
+    func translateImage(
+        imageData: Data,
+        mimeType: String,
+        targetLanguage: String,
+        settings: AppSettings
+    ) async throws -> GeminiTranslationResponse {
+        try await translateImage(imageData: imageData, mimeType: mimeType, targetLanguage: targetLanguage, settings: settings, learningContext: nil)
+    }
 }
 
 public final class GeminiClient: GeminiTranslating, @unchecked Sendable {
@@ -91,7 +112,8 @@ public final class GeminiClient: GeminiTranslating, @unchecked Sendable {
     public func translateText(
         _ text: String,
         targetLanguage: String,
-        settings: AppSettings
+        settings: AppSettings,
+        learningContext: ProjectLearningContext? = nil
     ) async throws -> GeminiTranslationResponse {
         let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else {
@@ -100,7 +122,8 @@ public final class GeminiClient: GeminiTranslating, @unchecked Sendable {
 
         let systemInstruction = PromptBuilder.buildSystemInstruction(
             customSystemPrompt: settings.customSystemPrompt,
-            targetLanguageCode: targetLanguage
+            targetLanguageCode: targetLanguage,
+            learningContext: learningContext
         )
         let userPrompt = PromptBuilder.buildTextUserPrompt(
             sourceText: trimmed,
@@ -122,7 +145,8 @@ public final class GeminiClient: GeminiTranslating, @unchecked Sendable {
         imageData: Data,
         mimeType: String = "image/png",
         targetLanguage: String,
-        settings: AppSettings
+        settings: AppSettings,
+        learningContext: ProjectLearningContext? = nil
     ) async throws -> GeminiTranslationResponse {
         guard !imageData.isEmpty else {
             throw GeminiError.emptyInput
@@ -130,7 +154,8 @@ public final class GeminiClient: GeminiTranslating, @unchecked Sendable {
 
         let systemInstruction = PromptBuilder.buildSystemInstruction(
             customSystemPrompt: settings.customSystemPrompt,
-            targetLanguageCode: targetLanguage
+            targetLanguageCode: targetLanguage,
+            learningContext: learningContext
         )
         let userPrompt = PromptBuilder.buildImageUserPrompt(
             targetLanguageCode: targetLanguage

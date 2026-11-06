@@ -176,6 +176,56 @@ struct SuperTransTestRunner {
         let reloadedStorage = StorageManager(baseDirectory: tempDir)
         assertEqual(reloadedStorage.settings.popupWidth, 560, "Reloaded settings preserves custom popupWidth")
         assertEqual(reloadedStorage.settings.popupHeight, 480, "Reloaded settings preserves custom popupHeight")
+
+        // Verify Multi-Project Isolation & Adaptive Learning Memory
+        let projA = reloadedStorage.createProject(name: "Dự án NHK", domainNote: "Bản tin truyền hình Nhật Bản")
+        reloadedStorage.addOrUpdateGlossaryEntry(projectId: projA.id, sourceTerm: "代表", targetTerm: "số tổng đài")
+        let nhkItem = TranslationItem(
+            contentType: .text,
+            sourceText: "NHKの代表電話番号にお問い合わせください。",
+            translatedText: "Vui lòng liên hệ theo số tổng đài của NHK.",
+            targetLanguage: "vi",
+            projectId: projA.id
+        )
+        reloadedStorage.addTranslation(item: nhkItem, imageData: nil, thumbData: nil)
+        reloadedStorage.markTranslationVerified(id: nhkItem.id, correctedText: "Xin vui lòng liên hệ tới số tổng đài của đài NHK.")
+
+        // Cache hit inside Project A
+        let hitInProjA = reloadedStorage.findCachedTranslation(
+            sourceText: "NHKの代表電話番号にお問い合わせください。",
+            targetLanguage: "vi",
+            projectId: projA.id
+        )
+        assertEqual(hitInProjA?.translatedText, "Xin vui lòng liên hệ tới số tổng đài của đài NHK.", "Verified translation returned in Project A")
+        assertTrue(hitInProjA?.isVerified == true, "Marked as Verified Gold Example")
+
+        // Create Project B -> Cache lookup for Project A's sentence must return nil in Project B (strict isolation!)
+        let projB = reloadedStorage.createProject(name: "Dự án Ngân hàng")
+        let missInProjB = reloadedStorage.findCachedTranslation(
+            sourceText: "NHKの代表電話番号にお問い合わせください。",
+            targetLanguage: "vi",
+            projectId: projB.id
+        )
+        assertTrue(missInProjB == nil, "Project B is strictly isolated from Project A's cache")
+
+        // Verify Adaptive Learning Context retrieval in Project A
+        let learningCtx = reloadedStorage.buildLearningContext(
+            for: "代表番号までご連絡ください。",
+            targetLanguage: "vi",
+            projectId: projA.id
+        )
+        assertEqual(learningCtx?.matchedGlossary.count, 1, "Matched glossary entry in Project A")
+        assertEqual(learningCtx?.matchedGlossary.first?.targetTerm, "số tổng đài", "Glossary target term matches")
+        assertEqual(learningCtx?.fewShotExamples.count, 1, "Retrieved verified Gold Example from Project A")
+
+        let sysPromptWithMemory = PromptBuilder.buildSystemInstruction(
+            customSystemPrompt: "",
+            targetLanguageCode: "vi",
+            learningContext: learningCtx
+        )
+        assertTrue(sysPromptWithMemory.contains("Dự án NHK"), "System prompt includes project name")
+        assertTrue(sysPromptWithMemory.contains("số tổng đài"), "System prompt includes project glossary term")
+        assertTrue(sysPromptWithMemory.contains("[Verified Gold Standard]"), "System prompt includes Verified Gold Standard example")
     }
 
     static func testSearchEngine() {

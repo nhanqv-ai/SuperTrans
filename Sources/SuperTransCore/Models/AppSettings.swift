@@ -49,6 +49,8 @@ public struct AppSettings: Codable, Equatable, Sendable {
     public var lastUpdateCheckDate: Date?
     public var popupWidth: Double?
     public var popupHeight: Double?
+    public var activeProjectId: UUID
+    public var enableAdaptiveLearning: Bool
 
     public static let defaultModel: String = "gemini-3.1-flash-lite"
     public static let presetModels: [String] = [
@@ -181,7 +183,9 @@ Rules:
         automaticallyCheckForUpdates: Bool = true,
         lastUpdateCheckDate: Date? = nil,
         popupWidth: Double? = nil,
-        popupHeight: Double? = nil
+        popupHeight: Double? = nil,
+        activeProjectId: UUID = TranslationProject.defaultProjectId,
+        enableAdaptiveLearning: Bool = true
     ) {
         self.apiKeys = apiKeys
         let trimmedModel = selectedModel.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -208,6 +212,8 @@ Rules:
         self.lastUpdateCheckDate = lastUpdateCheckDate
         self.popupWidth = popupWidth
         self.popupHeight = popupHeight
+        self.activeProjectId = activeProjectId
+        self.enableAdaptiveLearning = enableAdaptiveLearning
     }
 
     public init(from decoder: Decoder) throws {
@@ -241,5 +247,7 @@ Rules:
         self.lastUpdateCheckDate = try c.decodeIfPresent(Date.self, forKey: .lastUpdateCheckDate)
         self.popupWidth = try c.decodeIfPresent(Double.self, forKey: .popupWidth)
         self.popupHeight = try c.decodeIfPresent(Double.self, forKey: .popupHeight)
+        self.activeProjectId = try c.decodeIfPresent(UUID.self, forKey: .activeProjectId) ?? TranslationProject.defaultProjectId
+        self.enableAdaptiveLearning = try c.decodeIfPresent(Bool.self, forKey: .enableAdaptiveLearning) ?? true
     }
 }
