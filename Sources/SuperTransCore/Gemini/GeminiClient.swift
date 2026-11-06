@@ -5,6 +5,7 @@ public enum GeminiError: LocalizedError, Equatable, Sendable {
     case emptyInput
     case invalidURL
     case rateLimitExhaustedAllKeys(lastMessage: String)
+    case quotaLimited(message: String, retryAfterSeconds: TimeInterval, isDailyQuota: Bool)
     case invalidAPIKey(message: String)
     case httpError(statusCode: Int, message: String)
     case emptyResponse
@@ -20,6 +21,8 @@ public enum GeminiError: LocalizedError, Equatable, Sendable {
             return "Invalid Gemini API endpoint URL."
         case .rateLimitExhaustedAllKeys(let msg):
             return "\(LocalizationManager.shared.tr(.errorAllKeysRateLimited)): \(msg)"
+        case .quotaLimited(let msg, _, _):
+            return "HTTP 429: \(msg)"
         case .invalidAPIKey(let msg):
             return "\(LocalizationManager.shared.tr(.errorInvalidAPIKey)): \(msg)"
         case .httpError(let code, let msg):
@@ -178,6 +181,9 @@ public final class GeminiClient: GeminiTranslating, @unchecked Sendable {
             return .success(output)
         } catch let err as GeminiError {
             switch err {
+            case .quotaLimited(let msg, let retryAfter, let isDaily):
+                keyRotator.markRateLimited(key: trimmedKey, cooldownSeconds: retryAfter, isDailyQuota: isDaily)
+                return .failure(.httpError(statusCode: 429, message: msg))
             case .rateLimitExhaustedAllKeys(let msg), .httpError(429, let msg):
                 keyRotator.markRateLimited(key: trimmedKey)
                 return .failure(.httpError(statusCode: 429, message: msg))
@@ -197,9 +203,18 @@ public final class GeminiClient: GeminiTranslating, @unchecked Sendable {
         systemInstruction: String?,
         settings: AppSettings
     ) async throws -> GeminiTranslationResponse {
-        let candidateKeys = keyRotator.orderedCandidateKeys(from: settings.validAPIKeys)
-        guard !candidateKeys.isEmpty else {
+        let validKeys = settings.validAPIKeys
+        guard !validKeys.isEmpty else {
             throw GeminiError.missingAPIKey
+        }
+
+        let candidateKeys = keyRotator.orderedCandidateKeys(from: validKeys)
+        guard !candidateKeys.isEmpty else {
+            throw GeminiError.rateLimitExhaustedAllKeys(
+                lastMessage: LocalizationManager.shared.languageCode == "vi"
+                    ? "Tất cả API Key hiện tại đều đã hết Quota ngày hoặc không hợp lệ."
+                    : "All configured API keys have exhausted their daily quota or are invalid."
+            )
         }
 
         let model = settings.selectedModel.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
@@ -226,6 +241,10 @@ public final class GeminiClient: GeminiTranslating, @unchecked Sendable {
                 )
             } catch let error as GeminiError {
                 switch error {
+                case .quotaLimited(let msg, let retryAfter, let isDaily):
+                    keyRotator.markRateLimited(key: apiKey, cooldownSeconds: retryAfter, isDailyQuota: isDaily)
+                    lastRateLimitMessage = msg
+                    continue
                 case .httpError(let code, let msg) where code == 429 || code == 503:
                     keyRotator.markRateLimited(key: apiKey, cooldownSeconds: 60)
                     lastRateLimitMessage = msg
@@ -240,7 +259,6 @@ public final class GeminiClient: GeminiTranslating, @unchecked Sendable {
                     continue
                 default:
                     lastOtherError = error
-                    // If quota or resource exhausted is mentioned in message, rotate to next key
                     if let desc = error.errorDescription?.lowercased(),
                        desc.contains("quota") || desc.contains("rate") || desc.contains("exhausted") {
                         keyRotator.markRateLimited(key: apiKey, cooldownSeconds: 60)
@@ -321,7 +339,12 @@ public final class GeminiClient: GeminiTranslating, @unchecked Sendable {
         if !(200...299).contains(httpResponse.statusCode) {
             let apiErrorMessage = Self.extractErrorMessage(from: data) ?? HTTPURLResponse.localizedString(forStatusCode: httpResponse.statusCode)
             if httpResponse.statusCode == 429 || apiErrorMessage.lowercased().contains("resource_exhausted") || apiErrorMessage.lowercased().contains("quota") {
-                throw GeminiError.httpError(statusCode: 429, message: apiErrorMessage)
+                let quotaInfo = Self.extractQuotaLimitMetadata(from: data, httpResponse: httpResponse, fallbackMessage: apiErrorMessage)
+                throw GeminiError.quotaLimited(
+                    message: apiErrorMessage,
+                    retryAfterSeconds: quotaInfo.retryAfterSeconds,
+                    isDailyQuota: quotaInfo.isDailyQuota
+                )
             }
             if httpResponse.statusCode == 400 || httpResponse.statusCode == 401 || httpResponse.statusCode == 403 {
                 if apiErrorMessage.lowercased().contains("api key") || apiErrorMessage.lowercased().contains("api_key_invalid") || httpResponse.statusCode == 401 || httpResponse.statusCode == 403 {
@@ -372,5 +395,66 @@ public final class GeminiClient: GeminiTranslating, @unchecked Sendable {
             return status
         }
         return nil
+    }
+
+    /// Parses Google's HTTP 429 `QuotaFailure` and `RetryInfo` details to distinguish
+    /// short-term Per-Minute (RPM/TPM) rate limits from Daily Quota (RPD) exhaustion.
+    public static func extractQuotaLimitMetadata(
+        from data: Data,
+        httpResponse: HTTPURLResponse? = nil,
+        fallbackMessage: String = ""
+    ) -> (retryAfterSeconds: TimeInterval, isDailyQuota: Bool) {
+        var retrySeconds: TimeInterval = 60
+        var isDaily = false
+
+        if let headerRetry = httpResponse?.value(forHTTPHeaderField: "Retry-After"),
+           let parsedHeader = Double(headerRetry.trimmingCharacters(in: .whitespacesAndNewlines)),
+           parsedHeader > 0 {
+            retrySeconds = parsedHeader
+        }
+
+        let lowerFallback = fallbackMessage.lowercased()
+        if lowerFallback.contains("perday") || lowerFallback.contains("per_day") || lowerFallback.contains("per day") || lowerFallback.contains("daily") {
+            isDaily = true
+        }
+
+        // Parse "retry in 42.5s" from error message if present
+        if let range = lowerFallback.range(of: #"retry in ([0-9]+(\.[0-9]+)?)s"#, options: .regularExpression) {
+            let matched = String(lowerFallback[range])
+                .replacingOccurrences(of: "retry in ", with: "")
+                .replacingOccurrences(of: "s", with: "")
+            if let val = Double(matched), val > 0 {
+                retrySeconds = ceil(val)
+            }
+        }
+
+        if let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+           let errorObj = json["error"] as? [String: Any],
+           let details = errorObj["details"] as? [[String: Any]] {
+            for detail in details {
+                if let retryDelayStr = detail["retryDelay"] as? String {
+                    let clean = retryDelayStr.trimmingCharacters(in: CharacterSet(charactersIn: "sS \t\n\r"))
+                    if let val = Double(clean), val > 0 {
+                        retrySeconds = ceil(val)
+                    }
+                }
+                if let violations = detail["violations"] as? [[String: Any]] {
+                    for violation in violations {
+                        let quotaId = (violation["quotaId"] as? String ?? "").lowercased()
+                        let quotaMetric = (violation["quotaMetric"] as? String ?? "").lowercased()
+                        let desc = (violation["description"] as? String ?? "").lowercased()
+                        let combined = "\(quotaId) \(quotaMetric) \(desc)"
+                        if combined.contains("perday") || combined.contains("per_day") || combined.contains("per day") || combined.contains("daily") || combined.contains("rpd") {
+                            isDaily = true
+                        }
+                    }
+                }
+            }
+        }
+
+        if isDaily {
+            retrySeconds = max(retrySeconds, APIKeyRotator.dailyQuotaLockDuration)
+        }
+        return (retryAfterSeconds: retrySeconds, isDailyQuota: isDaily)
     }
 }

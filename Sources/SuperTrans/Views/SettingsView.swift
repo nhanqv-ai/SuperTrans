@@ -45,6 +45,8 @@ public struct SettingsView: View {
 
     @State private var selectedTab: SettingsTab = .general
     @State private var isCustomModelMode: Bool = false
+    @State private var statusClockNow: Date = Date()
+    private let statusTimer = Timer.publish(every: 1.0, on: .main, in: .common).autoconnect()
     @State private var newAPIKeyInput: String = ""
     @State private var revealedKeys: Set<String> = []
     @State private var testingKeys: Set<String> = []
@@ -92,6 +94,11 @@ public struct SettingsView: View {
         }
         .onReceive(NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)) { _ in
             isAccessibilityTrusted = autoPasteService.checkAccessibilityPermission()
+        }
+        .onReceive(statusTimer) { tick in
+            if selectedTab == .geminiAI {
+                statusClockNow = tick
+            }
         }
         .onDisappear {
             stopShortcutRecording()
@@ -648,7 +655,7 @@ public struct SettingsView: View {
     private func apiKeyRow(index: Int, key: String) -> some View {
         let isRevealed = revealedKeys.contains(key)
         let isTesting = testingKeys.contains(key)
-        let status = APIKeyRotator.shared.status(for: key)
+        let status = APIKeyRotator.shared.status(for: key, now: statusClockNow)
 
         return HStack(spacing: 6) {
             Text("#\(index + 1)")
@@ -723,10 +730,21 @@ public struct SettingsView: View {
                 Circle().fill(Color.secondary).frame(width: 6, height: 6)
                 Text(loc.tr(.keyStatusReady)).font(.system(size: 10)).foregroundColor(.secondary)
             }
-        case .rateLimited:
+        case .rateLimited(let until):
+            let remaining = APIKeyRotator.formatRemainingTime(until: until, now: statusClockNow)
             HStack(spacing: 3) {
                 Circle().fill(Color.orange).frame(width: 6, height: 6)
-                Text(loc.tr(.keyStatusRateLimited)).font(.system(size: 10, weight: .medium)).foregroundColor(.orange)
+                Text(isVi ? "Tạm nghỉ RPM (\(remaining))" : "RPM Cooldown (\(remaining))")
+                    .font(.system(size: 10, weight: .medium, design: .monospaced))
+                    .foregroundColor(.orange)
+            }
+        case .quotaExhausted(let until):
+            let remaining = APIKeyRotator.formatRemainingTime(until: until, now: statusClockNow)
+            HStack(spacing: 3) {
+                Circle().fill(Color.red).frame(width: 6, height: 6)
+                Text(isVi ? "Hết Quota ngày (\(remaining))" : "Daily Quota (\(remaining))")
+                    .font(.system(size: 10, weight: .medium, design: .monospaced))
+                    .foregroundColor(.red)
             }
         case .invalid:
             HStack(spacing: 3) {

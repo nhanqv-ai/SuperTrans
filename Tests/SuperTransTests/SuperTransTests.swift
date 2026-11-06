@@ -46,7 +46,11 @@ struct SuperTransTestRunner {
     }
 
     static func testAPIKeyRotator() {
-        let rotator = APIKeyRotator()
+        let tempFile = URL(fileURLWithPath: NSTemporaryDirectory())
+            .appendingPathComponent("SuperTransKeyStateTest_\(UUID().uuidString).json")
+        defer { try? FileManager.default.removeItem(at: tempFile) }
+
+        let rotator = APIKeyRotator(persistenceURL: tempFile)
         let keys = ["AIzaSyKeyOne111111", "AIzaSyKeyTwo222222", "AIzaSyKeyThree3333"]
 
         let firstOrder = rotator.orderedCandidateKeys(from: keys)
@@ -55,12 +59,29 @@ struct SuperTransTestRunner {
         let secondOrder = rotator.orderedCandidateKeys(from: keys)
         assertEqual(secondOrder, ["AIzaSyKeyTwo222222", "AIzaSyKeyThree3333", "AIzaSyKeyOne111111"], "Round-robin advances cursor")
 
-        // Mark KeyTwo rate-limited -> healthy keys come first, rate-limited key is demoted to the end
+        // Mark KeyTwo rate-limited & KeyThree invalid -> orderedCandidateKeys skips both completely when KeyOne is healthy!
         let now = Date()
-        rotator.markRateLimited(key: "AIzaSyKeyTwo222222", cooldownSeconds: 60, now: now)
-        let afterRateLimit = rotator.orderedCandidateKeys(from: keys, now: now)
-        assertEqual(afterRateLimit.last, "AIzaSyKeyTwo222222", "Rate-limited key demoted to last fallback")
-        assertTrue(afterRateLimit.first != "AIzaSyKeyTwo222222", "First candidate must be healthy")
+        rotator.markRateLimited(key: "AIzaSyKeyTwo222222", cooldownSeconds: 45, isDailyQuota: false, now: now)
+        rotator.markInvalid(key: "AIzaSyKeyThree3333", reason: "API_KEY_INVALID")
+
+        let healthyOnly = rotator.orderedCandidateKeys(from: keys, now: now)
+        assertEqual(healthyOnly, ["AIzaSyKeyOne111111"], "Skips rate-limited and invalid keys completely while healthy keys exist")
+
+        // Verify disk persistence of key states across new APIKeyRotator instance
+        let reloadedRotator = APIKeyRotator(persistenceURL: tempFile)
+        assertEqual(
+            reloadedRotator.orderedCandidateKeys(from: keys, now: now),
+            ["AIzaSyKeyOne111111"],
+            "Reloaded rotator preserves rate-limited and invalid key exclusions from disk"
+        )
+
+        // Verify daily quota exhaustion locks key for >= 6 hours and never falls back to it
+        reloadedRotator.markRateLimited(key: "AIzaSyKeyOne111111", cooldownSeconds: 60, isDailyQuota: true, now: now)
+        if case .quotaExhausted(let until) = reloadedRotator.status(for: "AIzaSyKeyOne111111", now: now) {
+            assertTrue(until.timeIntervalSince(now) >= 6 * 3600 - 1, "Daily quota lock lasts at least 6 hours")
+        } else {
+            assertTrue(false, "Expected .quotaExhausted status for daily quota limit")
+        }
 
         let masked = APIKeyRotator.maskKey("AIzaSyKeyOne111111")
         assertEqual(masked, "AIzaSy••••••1111", "API key masking")
