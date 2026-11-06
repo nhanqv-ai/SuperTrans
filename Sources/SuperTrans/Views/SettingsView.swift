@@ -65,6 +65,7 @@ public struct SettingsView: View {
     @State private var newProjectNameInput: String = ""
     @State private var newGlossarySourceInput: String = ""
     @State private var newGlossaryTargetInput: String = ""
+    @State private var showingAPIKeyGuidePopover: Bool = false
 
     public init(
         storageManager: StorageManager,
@@ -114,7 +115,7 @@ public struct SettingsView: View {
     // MARK: - Top Tab Bar (SuperClip Style — Zero Animation for Instant Response)
 
     private var topTabBar: some View {
-        HStack(spacing: 18) {
+        HStack(spacing: 8) {
             ForEach(SettingsTab.allCases) { tab in
                 Button(action: {
                     stopShortcutRecording()
@@ -129,7 +130,7 @@ public struct SettingsView: View {
                             .lineLimit(1)
                     }
                     .foregroundColor(selectedTab == tab ? .primary : .secondary)
-                    .padding(.horizontal, 10)
+                    .padding(.horizontal, 8)
                     .padding(.vertical, 4)
                     .background(
                         RoundedRectangle(cornerRadius: 6, style: .continuous)
@@ -140,7 +141,7 @@ public struct SettingsView: View {
                 .buttonStyle(.plain)
             }
         }
-        .padding(.horizontal, 16)
+        .padding(.horizontal, 12)
         .padding(.vertical, 6)
         .frame(maxWidth: .infinity)
     }
@@ -543,11 +544,30 @@ public struct SettingsView: View {
 
     private var apiKeysCard: some View {
         VStack(alignment: .leading, spacing: 6) {
-            HStack {
+            HStack(spacing: 8) {
                 Text(loc.tr(.geminiAPIKeysSection))
                     .font(.system(size: 12.5, weight: .semibold))
                     .foregroundColor(.primary)
+
+                Button(action: {
+                    showingAPIKeyGuidePopover.toggle()
+                }) {
+                    HStack(spacing: 3) {
+                        Image(systemName: "questionmark.circle.fill")
+                            .font(.system(size: 11))
+                        Text(isVi ? "Hướng dẫn tạo Key" : "How to get API Key")
+                            .font(.system(size: 11, weight: .medium))
+                            .underline()
+                    }
+                    .foregroundColor(.accentColor)
+                }
+                .buttonStyle(.plain)
+                .popover(isPresented: $showingAPIKeyGuidePopover, arrowEdge: .bottom) {
+                    apiKeyGuidePopoverContent
+                }
+
                 Spacer()
+
                 Text("(\(storageManager.settings.validAPIKeys.count) keys)")
                     .font(.system(size: 11, design: .monospaced))
                     .foregroundColor(.secondary)
@@ -556,51 +576,6 @@ public struct SettingsView: View {
             Text(loc.tr(.geminiAPIKeysSubtitle))
                 .font(.system(size: 10.5))
                 .foregroundColor(.secondary)
-
-            // Google AI Studio Link & Concise API Key Creation Guide
-            VStack(alignment: .leading, spacing: 4) {
-                HStack(spacing: 6) {
-                    Image(systemName: "key.radiowaves.forward.fill")
-                        .font(.system(size: 10.5, weight: .semibold))
-                        .foregroundColor(.accentColor)
-                    Text(isVi ? "Cách lấy Gemini API Key miễn phí:" : "How to get a free Gemini API Key:")
-                        .font(.system(size: 11, weight: .semibold))
-                        .foregroundColor(.primary)
-                    Spacer()
-                    Button(action: {
-                        if let url = URL(string: "https://aistudio.google.com/app/apikey") {
-                            NSWorkspace.shared.open(url)
-                        }
-                    }) {
-                        HStack(spacing: 4) {
-                            Text("Google AI Studio (aistudio.google.com)")
-                                .font(.system(size: 10.5, weight: .semibold))
-                            Image(systemName: "arrow.up.forward.square")
-                                .font(.system(size: 10, weight: .semibold))
-                        }
-                        .foregroundColor(.accentColor)
-                    }
-                    .buttonStyle(.plain)
-                }
-
-                Text(isVi
-                     ? "1. Mở trang Google AI Studio và đăng nhập tài khoản Google.\n2. Bấm \"Create API key\" → Chọn \"Create API key in new project\" → Copy mã key (bắt đầu bằng AIzaSy...).\n3. Quay lại đây bấm nút \"Dán & Thêm\" bên dưới (tạo 2–5 key ở các project khác nhau để xoay vòng không lo hết lượt)."
-                     : "1. Open Google AI Studio and sign in with your Google account.\n2. Click \"Create API key\" → Choose \"Create API key in new project\" → Copy the key (starts with AIzaSy...).\n3. Click \"Paste & Add\" below (create 2–5 keys across different projects for automatic rotation).")
-                    .font(.system(size: 10.5))
-                    .foregroundColor(.secondary)
-                    .lineSpacing(2)
-                    .fixedSize(horizontal: false, vertical: true)
-            }
-            .padding(8)
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .background(
-                RoundedRectangle(cornerRadius: 6, style: .continuous)
-                    .fill(Color.accentColor.opacity(0.08))
-            )
-            .overlay(
-                RoundedRectangle(cornerRadius: 6, style: .continuous)
-                    .stroke(Color.accentColor.opacity(0.22), lineWidth: 0.8)
-            )
 
             // Input bar with both Cmd+V support AND 1-click "Dán & Thêm" (Paste & Add) button
             HStack(spacing: 6) {
@@ -636,7 +611,7 @@ public struct SettingsView: View {
             if storageManager.settings.validAPIKeys.isEmpty {
                 RoundedRectangle(cornerRadius: 6, style: .continuous)
                     .fill(Color(nsColor: .textBackgroundColor))
-                    .frame(height: 110)
+                    .frame(height: 150)
                     .overlay(
                         VStack(spacing: 4) {
                             Image(systemName: "key")
@@ -660,7 +635,7 @@ public struct SettingsView: View {
                     }
                     .padding(4)
                 }
-                .frame(height: 120)
+                .frame(height: 165)
                 .background(Color(nsColor: .textBackgroundColor))
                 .cornerRadius(6)
                 .overlay(
@@ -703,6 +678,73 @@ public struct SettingsView: View {
         .padding(9)
         .frame(maxWidth: .infinity, alignment: .leading)
         .background(cardBackground)
+    }
+
+    private var apiKeyGuidePopoverContent: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            HStack(spacing: 6) {
+                Image(systemName: "key.radiowaves.forward.fill")
+                    .font(.system(size: 13, weight: .semibold))
+                    .foregroundColor(.accentColor)
+                Text(isVi ? "Hướng dẫn lấy Gemini API Key miễn phí" : "How to Get a Free Gemini API Key")
+                    .font(.system(size: 12.5, weight: .bold))
+                    .foregroundColor(.primary)
+            }
+
+            Divider()
+
+            VStack(alignment: .leading, spacing: 6) {
+                Text(isVi
+                     ? "1. Mở trang Google AI Studio và đăng nhập bằng tài khoản Google của bạn."
+                     : "1. Open Google AI Studio and sign in with your Google account.")
+                    .font(.system(size: 11.5))
+
+                Text(isVi
+                     ? "2. Bấm nút \"Create API key\" → Chọn \"Create API key in new project\" → Sao chép (Copy) mã key bắt đầu bằng AIzaSy..."
+                     : "2. Click \"Create API key\" → Select \"Create API key in new project\" → Copy the generated key (starts with AIzaSy...).")
+                    .font(.system(size: 11.5))
+
+                Text(isVi
+                     ? "3. Quay lại cửa sổ này và bấm nút \"Dán & Thêm\"."
+                     : "3. Return here and click \"Paste & Add\".")
+                    .font(.system(size: 11.5))
+
+                Text(isVi
+                     ? "Mẹo: Bạn có thể tạo 2–5 API Key ở các project khác nhau và thêm vào danh sách để SuperTrans tự động xoay vòng khi hết hạn mức (RPM/RPD)."
+                     : "Tip: Create 2–5 API keys across different projects so SuperTrans can automatically rotate them when rate limits are reached.")
+                    .font(.system(size: 11))
+                    .foregroundColor(.secondary)
+                    .padding(.top, 2)
+            }
+            .fixedSize(horizontal: false, vertical: true)
+
+            HStack {
+                Button(action: {
+                    if let url = URL(string: "https://aistudio.google.com/app/apikey") {
+                        NSWorkspace.shared.open(url)
+                    }
+                }) {
+                    HStack(spacing: 5) {
+                        Image(systemName: "safari")
+                            .font(.system(size: 11, weight: .semibold))
+                        Text(isVi ? "Mở Google AI Studio (aistudio.google.com)" : "Open Google AI Studio (aistudio.google.com)")
+                            .font(.system(size: 11.5, weight: .semibold))
+                        Image(systemName: "arrow.up.forward")
+                            .font(.system(size: 9.5, weight: .bold))
+                    }
+                    .padding(.horizontal, 10)
+                    .padding(.vertical, 6)
+                    .background(RoundedRectangle(cornerRadius: 6).fill(Color.accentColor))
+                    .foregroundColor(.white)
+                }
+                .buttonStyle(.plain)
+
+                Spacer()
+            }
+            .padding(.top, 2)
+        }
+        .padding(14)
+        .frame(width: 360)
     }
 
     private func apiKeyRow(index: Int, key: String) -> some View {
