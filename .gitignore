@@ -1,0 +1,11 @@
+.DS_Store
+/.build
+/Packages
+xcuserdata/
+DerivedData/
+.swiftpm/
+*.xcodeproj
+SuperTrans.app/
+SuperTrans-*.zip
+.verifier_bin*
+/tmp/SuperTrans_*
