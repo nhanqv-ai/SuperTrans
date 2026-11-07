@@ -197,6 +197,15 @@ public final class StorageManager: ObservableObject, StorageManaging, @unchecked
         notifyChange()
     }
 
+    public func setTranslationVerified(id: UUID, isVerified: Bool) {
+        lock.lock()
+        defer { lock.unlock() }
+        guard let idx = _items.firstIndex(where: { $0.id == id }) else { return }
+        _items[idx].isVerified = isVerified
+        saveMetadata()
+        notifyChange()
+    }
+
     public func buildLearningContext(
         for sourceText: String?,
         targetLanguage: String,
