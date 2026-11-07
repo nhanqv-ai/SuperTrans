@@ -74,6 +74,7 @@ public struct SettingsView: View {
     @State private var showingRenameProjectPopover: Bool = false
     @State private var renameProjectDraft: String = ""
     @State private var showingVerifiedExamplesPopover: Bool = false
+    @State private var showingPinnedItemsPopover: Bool = false
     @State private var didCopyGlossaryFeedback: Bool = false
     @State private var showingClearGlossaryConfirmation: Bool = false
     @State private var showingAPIKeyGuidePopover: Bool = false
@@ -132,16 +133,26 @@ public struct SettingsView: View {
     // MARK: - Top Tab Bar (SuperClip Style — Zero Animation for Instant Response)
 
     private var topTabBar: some View {
-        HStack(spacing: 8) {
+        let missingAPIKey = storageManager.settings.validAPIKeys.isEmpty
+        return HStack(spacing: 8) {
             ForEach(SettingsTab.allCases) { tab in
                 Button(action: {
                     stopShortcutRecording()
                     selectedTab = tab
                 }) {
                     VStack(spacing: 2) {
-                        Image(systemName: tab.iconName)
-                            .font(.system(size: 18, weight: .regular))
-                            .frame(height: 22)
+                        ZStack(alignment: .topTrailing) {
+                            Image(systemName: tab.iconName)
+                                .font(.system(size: 18, weight: .regular))
+                                .frame(height: 22)
+
+                            if tab == .geminiAI && missingAPIKey {
+                                Circle()
+                                    .fill(Color.orange)
+                                    .frame(width: 6, height: 6)
+                                    .offset(x: 3, y: 1)
+                            }
+                        }
                         Text(tab.title)
                             .font(.system(size: 11, weight: selectedTab == tab ? .semibold : .regular))
                             .lineLimit(1)
@@ -1558,32 +1569,64 @@ public struct SettingsView: View {
                             .buttonStyle(.bordered)
                             .controlSize(.small)
                             .help(isVi ? "Nhân bản Custom Prompt này" : "Duplicate this Custom Prompt")
+
+                            if customPreset.prompt != AppSettings.defaultSystemPrompt {
+                                Button(action: {
+                                    var s = storageManager.settings
+                                    if let idx = s.customPromptPresets.firstIndex(where: { $0.id == customPreset.id }) {
+                                        s.customPromptPresets[idx].prompt = AppSettings.defaultSystemPrompt
+                                        if s.resolvedActivePromptId == customPreset.id.uuidString {
+                                            s.customSystemPrompt = AppSettings.defaultSystemPrompt
+                                        }
+                                        storageManager.settings = s
+                                    }
+                                }) {
+                                    Image(systemName: "arrow.counterclockwise")
+                                        .font(.system(size: 10))
+                                }
+                                .buttonStyle(.bordered)
+                                .controlSize(.small)
+                                .help(isVi ? "Đặt lại nội dung về mẫu mặc định" : "Reset content to default template")
+                            }
                         }
 
-                        TextEditor(text: Binding(
-                            get: {
-                                storageManager.settings.customPromptPresets.first(where: { $0.id == customPreset.id })?.prompt ?? customPreset.prompt
-                            },
-                            set: { newPrompt in
-                                var s = storageManager.settings
-                                if let idx = s.customPromptPresets.firstIndex(where: { $0.id == customPreset.id }) {
-                                    s.customPromptPresets[idx].prompt = newPrompt
-                                    if s.resolvedActivePromptId == customPreset.id.uuidString {
-                                        s.customSystemPrompt = newPrompt
+                        ZStack(alignment: .bottomTrailing) {
+                            TextEditor(text: Binding(
+                                get: {
+                                    storageManager.settings.customPromptPresets.first(where: { $0.id == customPreset.id })?.prompt ?? customPreset.prompt
+                                },
+                                set: { newPrompt in
+                                    var s = storageManager.settings
+                                    if let idx = s.customPromptPresets.firstIndex(where: { $0.id == customPreset.id }) {
+                                        s.customPromptPresets[idx].prompt = newPrompt
+                                        if s.resolvedActivePromptId == customPreset.id.uuidString {
+                                            s.customSystemPrompt = newPrompt
+                                        }
+                                        storageManager.settings = s
                                     }
-                                    storageManager.settings = s
                                 }
-                            }
-                        ))
-                        .font(.system(size: 11.5, design: .monospaced))
-                        .padding(6)
-                        .frame(maxWidth: .infinity, minHeight: 312, maxHeight: 312)
-                        .background(Color(nsColor: .textBackgroundColor))
-                        .cornerRadius(6)
-                        .overlay(
-                            RoundedRectangle(cornerRadius: 6, style: .continuous)
-                                .stroke(Color(nsColor: .separatorColor), lineWidth: 0.8)
-                        )
+                            ))
+                            .font(.system(size: 11.5, design: .monospaced))
+                            .padding(6)
+                            .frame(maxWidth: .infinity, minHeight: 312, maxHeight: 312)
+                            .background(Color(nsColor: .textBackgroundColor))
+                            .cornerRadius(6)
+                            .overlay(
+                                RoundedRectangle(cornerRadius: 6, style: .continuous)
+                                    .stroke(Color(nsColor: .separatorColor), lineWidth: 0.8)
+                            )
+
+                            let charCount = (storageManager.settings.customPromptPresets.first(where: { $0.id == customPreset.id })?.prompt ?? customPreset.prompt).count
+                            Text(isVi ? "\(charCount) ký tự" : "\(charCount) chars")
+                                .font(.system(size: 9.5, design: .monospaced))
+                                .foregroundColor(.secondary.opacity(0.8))
+                                .padding(.horizontal, 6)
+                                .padding(.vertical, 2)
+                                .background(Color(nsColor: .windowBackgroundColor).opacity(0.85))
+                                .cornerRadius(4)
+                                .padding(6)
+                                .allowsHitTesting(false)
+                        }
                     } else if let builtinPreset = AppSettings.promptPresets.first(where: { $0.id == inspectedId }) ?? AppSettings.promptPresets.first {
                         let isHidden = settings.isBuiltinPromptHidden(builtinPreset.id)
                         let isBuiltinActive = (activeId == builtinPreset.id)
@@ -1842,7 +1885,20 @@ public struct SettingsView: View {
                             verifiedExamplesPopoverContent(for: activeProj)
                         }
 
-                        Label("\(pinnedCount) \(isVi ? "câu ghim" : "pinned")", systemImage: "pin")
+                        Button(action: {
+                            showingPinnedItemsPopover.toggle()
+                        }) {
+                            HStack(spacing: 3) {
+                                Image(systemName: "pin.fill")
+                                Text("\(pinnedCount) \(isVi ? "câu ghim" : "pinned")")
+                                    .underline()
+                            }
+                        }
+                        .buttonStyle(.plain)
+                        .help(isVi ? "Bấm để xem, sao chép hoặc bỏ ghim các câu dịch đã ghim trong dự án này" : "Click to inspect, copy, or unpin pinned translations in this project")
+                        .popover(isPresented: $showingPinnedItemsPopover, arrowEdge: .bottom) {
+                            pinnedItemsPopoverContent(for: activeProj)
+                        }
                     }
                     .font(.system(size: 10, weight: .medium))
                     .foregroundColor(.accentColor)
@@ -2219,6 +2275,85 @@ public struct SettingsView: View {
                                 }
                                 .buttonStyle(.borderless)
                                 .help(isVi ? "Gỡ bỏ câu mẫu này khỏi bộ nhớ ưu tiên của AI" : "Remove from Verified Gold Examples")
+                            }
+                            .padding(8)
+                            .background(RoundedRectangle(cornerRadius: 6).fill(Color.secondary.opacity(0.08)))
+                        }
+                    }
+                }
+                .frame(maxHeight: 220)
+            }
+        }
+        .padding(12)
+        .frame(width: 370)
+    }
+
+    private func pinnedItemsPopoverContent(for project: TranslationProject) -> some View {
+        let pinnedItems = storageManager.items.filter { $0.projectId == project.id && $0.isPinned }
+        return VStack(alignment: .leading, spacing: 8) {
+            HStack {
+                Image(systemName: "pin.fill")
+                    .foregroundColor(.accentColor)
+                    .font(.system(size: 12))
+                Text(isVi
+                     ? "Bản dịch đã ghim — Dự án \"\(project.name)\""
+                     : "Pinned Translations — Project \"\(project.name)\"")
+                    .font(.system(size: 12, weight: .semibold))
+                Spacer()
+                Text("(\(pinnedItems.count))")
+                    .font(.system(size: 11, design: .monospaced))
+                    .foregroundColor(.secondary)
+            }
+
+            if pinnedItems.isEmpty {
+                Text(isVi
+                     ? "Chưa có bản dịch nào được ghim trong dự án này. Bấm biểu tượng ghim trên Popup hoặc trong Lịch sử để lưu các câu dịch quan trọng."
+                     : "No pinned translations in this project yet. Click the pin icon on the popup or in History to keep important translations.")
+                    .font(.system(size: 11))
+                    .foregroundColor(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .padding(.vertical, 12)
+            } else {
+                ScrollView {
+                    LazyVStack(alignment: .leading, spacing: 6) {
+                        ForEach(pinnedItems) { item in
+                            HStack(alignment: .top, spacing: 8) {
+                                VStack(alignment: .leading, spacing: 3) {
+                                    if let src = item.sourceText, !src.isEmpty {
+                                        Text(src)
+                                            .font(.system(size: 10.5))
+                                            .foregroundColor(.secondary)
+                                            .lineLimit(2)
+                                    }
+                                    Text(item.translatedText)
+                                        .font(.system(size: 11, weight: .medium))
+                                        .foregroundColor(.primary)
+                                        .lineLimit(3)
+                                }
+                                .frame(maxWidth: .infinity, alignment: .leading)
+
+                                Button(action: {
+                                    NSPasteboard.general.clearContents()
+                                    NSPasteboard.general.setString(item.translatedText, forType: .string)
+                                }) {
+                                    Image(systemName: "doc.on.doc")
+                                        .font(.system(size: 10.5))
+                                        .foregroundColor(.secondary)
+                                        .frame(width: 20, height: 20)
+                                }
+                                .buttonStyle(.borderless)
+                                .help(isVi ? "Sao chép bản dịch" : "Copy translation")
+
+                                Button(action: {
+                                    storageManager.togglePin(id: item.id)
+                                }) {
+                                    Image(systemName: "pin.slash")
+                                        .font(.system(size: 10.5))
+                                        .foregroundColor(.orange)
+                                        .frame(width: 20, height: 20)
+                                }
+                                .buttonStyle(.borderless)
+                                .help(isVi ? "Bỏ ghim bản dịch này" : "Unpin this translation")
                             }
                             .padding(8)
                             .background(RoundedRectangle(cornerRadius: 6).fill(Color.secondary.opacity(0.08)))
