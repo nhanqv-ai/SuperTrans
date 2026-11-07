@@ -76,6 +76,7 @@ public struct SettingsView: View {
     @State private var showingVerifiedExamplesPopover: Bool = false
     @State private var showingPinnedItemsPopover: Bool = false
     @State private var didCopyGlossaryFeedback: Bool = false
+    @State private var copiedGlossaryEntryId: UUID? = nil
     @State private var showingClearGlossaryConfirmation: Bool = false
     @State private var showingAPIKeyGuidePopover: Bool = false
     @State private var copiedAPIKeyFeedback: String? = nil
@@ -321,20 +322,50 @@ public struct SettingsView: View {
                             s.popupHeight = nil
                             storageManager.settings = s
                         }) {
-                            HStack(spacing: 3) {
-                                Image(systemName: "arrow.counterclockwise")
-                                    .font(.system(size: 9.5))
-                                Text(isVi ? "Đặt lại tự động" : "Reset to Auto")
-                                    .font(.system(size: 10.5, weight: .medium))
-                            }
+                            Image(systemName: "arrow.counterclockwise")
+                                .font(.system(size: 10))
                         }
                         .buttonStyle(.bordered)
                         .controlSize(.small)
+                        .help(isVi ? "Đặt lại tự động co giãn theo nội dung" : "Reset to auto-fit content")
                     } else {
-                        Text(isVi ? "Tự động co giãn theo nội dung (Kéo cạnh để đổi cỡ)" : "Auto-fit content (Drag edges to resize)")
+                        Text(isVi ? "Tự động co giãn theo nội dung" : "Auto-fit content")
                             .font(.system(size: 11))
                             .foregroundColor(.secondary)
                     }
+
+                    Spacer()
+
+                    Menu(isVi ? "Cỡ nhanh" : "Presets") {
+                        Button(isVi ? "Tự động co giãn (Mặc định)" : "Auto-fit Content (Default)") {
+                            var s = storageManager.settings
+                            s.popupWidth = nil
+                            s.popupHeight = nil
+                            storageManager.settings = s
+                        }
+                        Divider()
+                        Button(isVi ? "Nhỏ gọn (420 × 280 px)" : "Compact (420 × 280 px)") {
+                            var s = storageManager.settings
+                            s.popupWidth = 420
+                            s.popupHeight = 280
+                            storageManager.settings = s
+                        }
+                        Button(isVi ? "Tiêu chuẩn (520 × 360 px)" : "Standard (520 × 360 px)") {
+                            var s = storageManager.settings
+                            s.popupWidth = 520
+                            s.popupHeight = 360
+                            storageManager.settings = s
+                        }
+                        Button(isVi ? "Rộng rãi (640 × 440 px)" : "Spacious (640 × 440 px)") {
+                            var s = storageManager.settings
+                            s.popupWidth = 640
+                            s.popupHeight = 440
+                            storageManager.settings = s
+                        }
+                    }
+                    .menuStyle(.borderedButton)
+                    .controlSize(.small)
+                    .fixedSize()
                 }
             }
         }
@@ -1697,6 +1728,18 @@ public struct SettingsView: View {
                                 }
                                 .buttonStyle(.borderedProminent)
                                 .controlSize(.small)
+                            } else {
+                                Button(action: {
+                                    var s = storageManager.settings
+                                    s.selectedPromptId = builtinPreset.id
+                                    s.customSystemPrompt = builtinPreset.prompt
+                                    storageManager.settings = s
+                                }) {
+                                    Text(isVi ? "Dùng" : "Use")
+                                        .font(.system(size: 10.5, weight: .medium))
+                                }
+                                .buttonStyle(.borderedProminent)
+                                .controlSize(.small)
                             }
 
                             Button(action: {
@@ -1725,21 +1768,33 @@ public struct SettingsView: View {
                             .controlSize(.small)
                         }
 
-                        ScrollView {
-                            Text(builtinPreset.prompt)
-                                .font(.system(size: 11.5, design: .monospaced))
-                                .foregroundColor(.secondary)
-                                .textSelection(.enabled)
-                                .frame(maxWidth: .infinity, alignment: .leading)
-                                .padding(8)
+                        ZStack(alignment: .bottomTrailing) {
+                            ScrollView {
+                                Text(builtinPreset.prompt)
+                                    .font(.system(size: 11.5, design: .monospaced))
+                                    .foregroundColor(.secondary)
+                                    .textSelection(.enabled)
+                                    .frame(maxWidth: .infinity, alignment: .leading)
+                                    .padding(8)
+                            }
+                            .frame(maxWidth: .infinity, minHeight: 312, maxHeight: 312)
+                            .background(Color(nsColor: .textBackgroundColor).opacity(0.6))
+                            .cornerRadius(6)
+                            .overlay(
+                                RoundedRectangle(cornerRadius: 6, style: .continuous)
+                                    .stroke(Color(nsColor: .separatorColor), lineWidth: 0.8)
+                            )
+
+                            Text(isVi ? "\(builtinPreset.prompt.count) ký tự" : "\(builtinPreset.prompt.count) chars")
+                                .font(.system(size: 9.5, design: .monospaced))
+                                .foregroundColor(.secondary.opacity(0.8))
+                                .padding(.horizontal, 6)
+                                .padding(.vertical, 2)
+                                .background(Color(nsColor: .windowBackgroundColor).opacity(0.85))
+                                .cornerRadius(4)
+                                .padding(6)
+                                .allowsHitTesting(false)
                         }
-                        .frame(maxWidth: .infinity, minHeight: 312, maxHeight: 312)
-                        .background(Color(nsColor: .textBackgroundColor).opacity(0.6))
-                        .cornerRadius(6)
-                        .overlay(
-                            RoundedRectangle(cornerRadius: 6, style: .continuous)
-                                .stroke(Color(nsColor: .separatorColor), lineWidth: 0.8)
-                        )
                     }
                 }
                 .frame(maxWidth: .infinity)
@@ -1874,12 +1929,24 @@ public struct SettingsView: View {
                 }
 
                 HStack(spacing: 6) {
-                    TextField(isVi ? "Tên dự án mới (VD: Dự án NHK, Ngân hàng, Game...)" : "New project name...", text: $newProjectNameInput)
-                        .textFieldStyle(.roundedBorder)
-                        .font(.system(size: 11))
-                        .onSubmit {
-                            createNewProjectFromInput()
+                    ZStack(alignment: .trailing) {
+                        TextField(isVi ? "Tên dự án mới (VD: Dự án NHK, Ngân hàng, Game...)" : "New project name...", text: $newProjectNameInput)
+                            .textFieldStyle(.roundedBorder)
+                            .font(.system(size: 11))
+                            .onSubmit {
+                                createNewProjectFromInput()
+                            }
+
+                        if !newProjectNameInput.isEmpty {
+                            Button(action: { newProjectNameInput = "" }) {
+                                Image(systemName: "xmark.circle.fill")
+                                    .font(.system(size: 10.5))
+                                    .foregroundColor(.secondary)
+                            }
+                            .buttonStyle(.plain)
+                            .padding(.trailing, 6)
                         }
+                    }
 
                     Button(isVi ? "+ Tạo Dự án" : "+ New Project") {
                         createNewProjectFromInput()
@@ -2111,14 +2178,19 @@ public struct SettingsView: View {
                         .help(isVi ? "Xoá ô đang nhập" : "Clear input fields")
                     }
 
-                    Button(isVi ? "Lưu" : "Save") {
+                    let trimmedSourceDraft = newGlossarySourceInput.trimmingCharacters(in: .whitespacesAndNewlines)
+                    let isUpdatingExistingTerm = !trimmedSourceDraft.isEmpty && activeProj.glossary.contains {
+                        $0.sourceTerm.caseInsensitiveCompare(trimmedSourceDraft) == .orderedSame
+                    }
+
+                    Button(isUpdatingExistingTerm ? (isVi ? "Cập nhật" : "Update") : (isVi ? "Lưu" : "Save")) {
                         addGlossaryEntryFromInput()
                     }
                     .buttonStyle(.borderedProminent)
                     .controlSize(.small)
                     .font(.system(size: 11, weight: .medium))
                     .disabled(
-                        newGlossarySourceInput.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ||
+                        trimmedSourceDraft.isEmpty ||
                         newGlossaryTargetInput.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
                     )
                 }
@@ -2168,6 +2240,24 @@ public struct SettingsView: View {
                                         .lineLimit(1)
 
                                     Spacer()
+
+                                    Button(action: {
+                                        let pairText = "\(entry.sourceTerm)\t\(entry.targetTerm)"
+                                        NSPasteboard.general.clearContents()
+                                        NSPasteboard.general.setString(pairText, forType: .string)
+                                        copiedGlossaryEntryId = entry.id
+                                        DispatchQueue.main.asyncAfter(deadline: .now() + 1.2) {
+                                            if copiedGlossaryEntryId == entry.id {
+                                                copiedGlossaryEntryId = nil
+                                            }
+                                        }
+                                    }) {
+                                        Image(systemName: copiedGlossaryEntryId == entry.id ? "checkmark" : "doc.on.doc")
+                                            .font(.system(size: 9.5))
+                                            .foregroundColor(copiedGlossaryEntryId == entry.id ? .green : .secondary)
+                                    }
+                                    .buttonStyle(.plain)
+                                    .help(isVi ? "Sao chép cặp thuật ngữ này" : "Copy this glossary pair")
 
                                     Button(action: {
                                         newGlossarySourceInput = entry.sourceTerm
