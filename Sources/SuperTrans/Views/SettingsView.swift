@@ -123,8 +123,7 @@ public struct SettingsView: View {
 
     private var topTabBar: some View {
         HStack(spacing: 8) {
-            ForEach(Array(SettingsTab.allCases.enumerated()), id: \.element.id) { idx, tab in
-                let shortcutChar = Character("\(idx + 1)")
+            ForEach(SettingsTab.allCases) { tab in
                 Button(action: {
                     stopShortcutRecording()
                     selectedTab = tab
@@ -147,8 +146,6 @@ public struct SettingsView: View {
                     .contentShape(Rectangle())
                 }
                 .buttonStyle(.plain)
-                .keyboardShortcut(KeyEquivalent(shortcutChar), modifiers: .command)
-                .help("\(tab.title) (⌘\(idx + 1))")
             }
         }
         .padding(.horizontal, 12)
@@ -2291,9 +2288,6 @@ public struct SettingsView: View {
 
     private var footerBar: some View {
         HStack {
-            Text(isVi ? "Phím tắt chuyển Tab: ⌘1 – ⌘6" : "Switch Tabs: ⌘1 – ⌘6")
-                .font(.system(size: 10.5))
-                .foregroundColor(.secondary)
             Spacer()
             Button(isVi ? "Xong" : "Done") {
                 onDismiss?()
