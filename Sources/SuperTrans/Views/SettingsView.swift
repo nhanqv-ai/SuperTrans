@@ -82,6 +82,11 @@ public struct SettingsView: View {
     @State private var copiedAPIKeyFeedback: String? = nil
     @State private var didCopyAllKeysFeedback: Bool = false
     @State private var didCopyPromptFeedback: Bool = false
+    @State private var isTestingSelectedModel: Bool = false
+    @State private var selectedModelTestStatus: Bool? = nil
+    @State private var copiedIgnoredAppBid: String? = nil
+    @State private var showingClearIgnoredAppsConfirmation: Bool = false
+    @State private var didCopyVersionInfoFeedback: Bool = false
     @State private var newCustomPromptNameInput: String = ""
     @State private var selectedInspectorPromptId: String? = nil
     @FocusState private var isCustomPromptNameFocused: Bool
@@ -1116,6 +1121,7 @@ public struct SettingsView: View {
                 return storageManager.settings.selectedModel
             },
             set: { val in
+                selectedModelTestStatus = nil
                 if val == "__custom__" {
                     isCustomModelMode = true
                 } else {
@@ -1151,6 +1157,7 @@ public struct SettingsView: View {
                 if storageManager.settings.selectedModel != AppSettings.defaultModel || showCustomInput {
                     Button(action: {
                         isCustomModelMode = false
+                        selectedModelTestStatus = nil
                         var s = storageManager.settings
                         s.selectedModel = AppSettings.defaultModel
                         storageManager.settings = s
@@ -1161,6 +1168,29 @@ public struct SettingsView: View {
                     .buttonStyle(.bordered)
                     .controlSize(.small)
                     .help(isVi ? "Đặt lại về Model nhanh nhất khuyên dùng (\(AppSettings.defaultModel))" : "Reset to fastest recommended model (\(AppSettings.defaultModel))")
+                }
+
+                if !storageManager.settings.validAPIKeys.isEmpty {
+                    Button(action: testSelectedModel) {
+                        HStack(spacing: 4) {
+                            if isTestingSelectedModel {
+                                ProgressView().controlSize(.mini)
+                            } else if let status = selectedModelTestStatus {
+                                Image(systemName: status ? "checkmark.circle.fill" : "exclamationmark.triangle.fill")
+                                    .font(.system(size: 10))
+                                    .foregroundColor(status ? .green : .orange)
+                            } else {
+                                Image(systemName: "bolt.horizontal")
+                                    .font(.system(size: 10))
+                            }
+                            Text(isVi ? "Kiểm tra Model" : "Test Model")
+                                .font(.system(size: 10.5, weight: .medium))
+                        }
+                    }
+                    .buttonStyle(.bordered)
+                    .controlSize(.small)
+                    .disabled(isTestingSelectedModel || storageManager.settings.selectedModel.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                    .help(isVi ? "Kiểm tra kết nối thực tế tới Model đang chọn bằng API Key hiện tại" : "Test connection to the selected Model using your active API Key")
                 }
             }
 
@@ -1173,6 +1203,7 @@ public struct SettingsView: View {
                     TextField(loc.tr(.customModelPlaceholder), text: Binding(
                         get: { storageManager.settings.selectedModel },
                         set: { val in
+                            selectedModelTestStatus = nil
                             var s = storageManager.settings
                             s.selectedModel = val
                             storageManager.settings = s
@@ -1180,6 +1211,21 @@ public struct SettingsView: View {
                     ))
                     .textFieldStyle(.roundedBorder)
                     .font(.system(size: 11.5, design: .monospaced))
+
+                    if !storageManager.settings.selectedModel.isEmpty {
+                        Button(action: {
+                            selectedModelTestStatus = nil
+                            var s = storageManager.settings
+                            s.selectedModel = ""
+                            storageManager.settings = s
+                        }) {
+                            Image(systemName: "xmark.circle.fill")
+                                .font(.system(size: 11))
+                                .foregroundColor(.secondary)
+                        }
+                        .buttonStyle(.borderless)
+                        .help(isVi ? "Xoá Model ID" : "Clear Model ID")
+                    }
                 }
             }
         }
@@ -2613,6 +2659,33 @@ public struct SettingsView: View {
         }
     }
 
+    private func testSelectedModel() {
+        guard let firstKey = storageManager.settings.validAPIKeys.first else { return }
+        let model = storageManager.settings.selectedModel.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !model.isEmpty else { return }
+        isTestingSelectedModel = true
+        selectedModelTestStatus = nil
+        Task {
+            let result = await GeminiClient.shared.testAPIKey(firstKey, model: model)
+            let ok: Bool
+            if case .success = result {
+                ok = true
+            } else {
+                ok = false
+            }
+            await MainActor.run {
+                isTestingSelectedModel = false
+                selectedModelTestStatus = ok
+                keyRefreshTrigger = UUID()
+                DispatchQueue.main.asyncAfter(deadline: .now() + 2.5) {
+                    if selectedModelTestStatus == ok {
+                        selectedModelTestStatus = nil
+                    }
+                }
+            }
+        }
+    }
+
     private func testAllAPIKeys() {
         let keys = storageManager.settings.validAPIKeys
         guard !keys.isEmpty else { return }
@@ -2769,10 +2842,14 @@ public struct SettingsView: View {
 
                 if !storageManager.settings.ignoredApps.isEmpty {
                     Button(action: {
-                        var s = storageManager.settings
-                        s.ignoredApps.removeAll()
-                        storageManager.settings = s
-                        selectedIgnoredAppId = nil
+                        if storageManager.settings.ignoredApps.count > 1 {
+                            showingClearIgnoredAppsConfirmation = true
+                        } else {
+                            var s = storageManager.settings
+                            s.ignoredApps.removeAll()
+                            storageManager.settings = s
+                            selectedIgnoredAppId = nil
+                        }
                     }) {
                         HStack(spacing: 3) {
                             Image(systemName: "trash")
@@ -2783,6 +2860,19 @@ public struct SettingsView: View {
                     }
                     .buttonStyle(.bordered)
                     .controlSize(.small)
+                    .confirmationDialog(
+                        isVi ? "Bỏ chặn toàn bộ \(storageManager.settings.ignoredApps.count) ứng dụng trong danh sách?" : "Remove all \(storageManager.settings.ignoredApps.count) apps from the ignored list?",
+                        isPresented: $showingClearIgnoredAppsConfirmation,
+                        titleVisibility: .visible
+                    ) {
+                        Button(isVi ? "Bỏ chặn tất cả" : "Clear All", role: .destructive) {
+                            var s = storageManager.settings
+                            s.ignoredApps.removeAll()
+                            storageManager.settings = s
+                            selectedIgnoredAppId = nil
+                        }
+                        Button(isVi ? "Hủy" : "Cancel", role: .cancel) {}
+                    }
                 }
             }
         }
@@ -2810,6 +2900,26 @@ public struct SettingsView: View {
                 .font(.system(size: 10, design: .monospaced))
                 .foregroundColor(.secondary)
                 .lineLimit(1)
+
+            if !app.bundleIdentifier.isEmpty {
+                Button(action: {
+                    NSPasteboard.general.clearContents()
+                    NSPasteboard.general.setString(app.bundleIdentifier, forType: .string)
+                    copiedIgnoredAppBid = app.id
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 1.2) {
+                        if copiedIgnoredAppBid == app.id {
+                            copiedIgnoredAppBid = nil
+                        }
+                    }
+                }) {
+                    Image(systemName: copiedIgnoredAppBid == app.id ? "checkmark" : "doc.on.doc")
+                        .font(.system(size: 9.5))
+                        .foregroundColor(copiedIgnoredAppBid == app.id ? .green : .secondary)
+                        .frame(width: 18, height: 18)
+                }
+                .buttonStyle(.borderless)
+                .help(isVi ? "Sao chép Bundle ID (\(app.bundleIdentifier))" : "Copy Bundle ID (\(app.bundleIdentifier))")
+            }
 
             if let path = app.iconPath ?? NSWorkspace.shared.urlForApplication(withBundleIdentifier: app.bundleIdentifier)?.path,
                FileManager.default.fileExists(atPath: path) {
@@ -2978,9 +3088,27 @@ public struct SettingsView: View {
                 VStack(spacing: 2) {
                     Text("SuperTrans")
                         .font(.system(size: 15, weight: .bold))
-                    Text("Version \(updateManager.currentVersion) (com.nhanqv.supertrans)")
-                        .font(.system(size: 11))
-                        .foregroundColor(.secondary)
+                    HStack(spacing: 5) {
+                        Text("Version \(updateManager.currentVersion) (com.nhanqv.supertrans)")
+                            .font(.system(size: 11))
+                            .foregroundColor(.secondary)
+
+                        Button(action: {
+                            let info = "SuperTrans v\(updateManager.currentVersion) (com.nhanqv.supertrans) — macOS \(ProcessInfo.processInfo.operatingSystemVersionString)"
+                            NSPasteboard.general.clearContents()
+                            NSPasteboard.general.setString(info, forType: .string)
+                            didCopyVersionInfoFeedback = true
+                            DispatchQueue.main.asyncAfter(deadline: .now() + 1.4) {
+                                didCopyVersionInfoFeedback = false
+                            }
+                        }) {
+                            Image(systemName: didCopyVersionInfoFeedback ? "checkmark" : "doc.on.doc")
+                                .font(.system(size: 9.5))
+                                .foregroundColor(didCopyVersionInfoFeedback ? .green : .secondary)
+                        }
+                        .buttonStyle(.plain)
+                        .help(isVi ? "Sao chép thông tin phiên bản" : "Copy version info")
+                    }
                 }
 
                 // Check for Updates Section (SuperClip style)
