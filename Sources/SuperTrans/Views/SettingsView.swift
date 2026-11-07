@@ -68,6 +68,8 @@ public struct SettingsView: View {
     @State private var glossarySearchQuery: String = ""
     @State private var showingRenameProjectPopover: Bool = false
     @State private var renameProjectDraft: String = ""
+    @State private var showingVerifiedExamplesPopover: Bool = false
+    @State private var didCopyGlossaryFeedback: Bool = false
     @State private var showingAPIKeyGuidePopover: Bool = false
     @State private var copiedAPIKeyFeedback: String? = nil
     @State private var newCustomPromptNameInput: String = ""
@@ -805,12 +807,39 @@ public struct SettingsView: View {
         let isRevealed = revealedKeys.contains(key)
         let isTesting = testingKeys.contains(key)
         let status = APIKeyRotator.shared.status(for: key, now: statusClockNow)
+        let totalKeys = storageManager.settings.validAPIKeys.count
 
-        return HStack(spacing: 6) {
+        return HStack(spacing: 5) {
             Text("#\(index + 1)")
                 .font(.system(size: 10, weight: .bold, design: .monospaced))
                 .foregroundColor(.secondary)
                 .frame(width: 22, alignment: .leading)
+
+            if totalKeys > 1 {
+                HStack(spacing: 1) {
+                    Button(action: {
+                        moveAPIKey(at: index, offset: -1)
+                    }) {
+                        Image(systemName: "chevron.up")
+                            .font(.system(size: 8.5, weight: .bold))
+                            .frame(width: 13, height: 16)
+                    }
+                    .buttonStyle(.borderless)
+                    .disabled(index == 0)
+                    .help(isVi ? "Đưa Key lên ưu tiên trước" : "Move key up")
+
+                    Button(action: {
+                        moveAPIKey(at: index, offset: 1)
+                    }) {
+                        Image(systemName: "chevron.down")
+                            .font(.system(size: 8.5, weight: .bold))
+                            .frame(width: 13, height: 16)
+                    }
+                    .buttonStyle(.borderless)
+                    .disabled(index >= totalKeys - 1)
+                    .help(isVi ? "Đưa Key xuống dưới" : "Move key down")
+                }
+            }
 
             Text(isRevealed ? key : APIKeyRotator.maskKey(key))
                 .font(.system(size: 11, design: .monospaced))
@@ -1585,7 +1614,22 @@ public struct SettingsView: View {
                     Spacer()
                     HStack(spacing: 8) {
                         Label("\(activeProj.glossary.count) \(isVi ? "thuật ngữ" : "terms")", systemImage: "book.closed")
-                        Label("\(verifiedCount) \(isVi ? "câu đã dạy" : "taught")", systemImage: "checkmark.seal")
+
+                        Button(action: {
+                            showingVerifiedExamplesPopover.toggle()
+                        }) {
+                            HStack(spacing: 3) {
+                                Image(systemName: "checkmark.seal.fill")
+                                Text("\(verifiedCount) \(isVi ? "câu đã dạy" : "taught")")
+                                    .underline()
+                            }
+                        }
+                        .buttonStyle(.plain)
+                        .help(isVi ? "Bấm để xem hoặc xoá các câu mẫu chuẩn đã dạy AI trong dự án này" : "Click to inspect or remove verified examples for this project")
+                        .popover(isPresented: $showingVerifiedExamplesPopover, arrowEdge: .bottom) {
+                            verifiedExamplesPopoverContent(for: activeProj)
+                        }
+
                         Label("\(pinnedCount) \(isVi ? "câu ghim" : "pinned")", systemImage: "pin")
                     }
                     .font(.system(size: 10, weight: .medium))
@@ -1612,10 +1656,37 @@ public struct SettingsView: View {
 
             // Card 3: Project Glossary (Từ điển Thuật ngữ của Dự án)
             VStack(alignment: .leading, spacing: 6) {
-                HStack(spacing: 8) {
-                    Text(isVi ? "Từ điển Thuật ngữ của Dự án (AI luôn tuân thủ)" : "Project Glossary (Strictly enforced)")
+                HStack(spacing: 6) {
+                    Text(isVi ? "Từ điển Thuật ngữ của Dự án" : "Project Glossary")
                         .font(.system(size: 12, weight: .semibold))
                     Spacer()
+
+                    Button(action: pasteBulkGlossaryFromClipboard) {
+                        HStack(spacing: 3) {
+                            Image(systemName: "doc.on.clipboard")
+                                .font(.system(size: 9.5))
+                            Text(isVi ? "Dán nhanh" : "Paste")
+                                .font(.system(size: 10, weight: .medium))
+                        }
+                    }
+                    .buttonStyle(.bordered)
+                    .controlSize(.mini)
+                    .help(isVi ? "Dán nhiều cặp thuật ngữ từ Clipboard (mỗi dòng dạng: từ_gốc -> nghĩa_đích hoặc phân tách bằng Tab)" : "Paste multiple glossary pairs from Clipboard (one per line: source -> target or Tab-separated)")
+
+                    if !activeProj.glossary.isEmpty {
+                        Button(action: copyGlossaryToClipboard) {
+                            HStack(spacing: 3) {
+                                Image(systemName: didCopyGlossaryFeedback ? "checkmark" : "doc.on.doc")
+                                    .font(.system(size: 9.5))
+                                Text(didCopyGlossaryFeedback ? (isVi ? "Đã chép" : "Copied") : (isVi ? "Sao chép" : "Copy"))
+                                    .font(.system(size: 10, weight: .medium))
+                            }
+                        }
+                        .buttonStyle(.bordered)
+                        .controlSize(.mini)
+                        .help(isVi ? "Sao chép toàn bộ từ điển thuật ngữ của dự án này vào Clipboard" : "Copy all glossary entries of this project to Clipboard")
+                    }
+
                     if activeProj.glossary.count >= 3 {
                         HStack(spacing: 4) {
                             Image(systemName: "magnifyingglass")
@@ -1779,6 +1850,118 @@ public struct SettingsView: View {
         )
         newGlossarySourceInput = ""
         newGlossaryTargetInput = ""
+    }
+
+    private func pasteBulkGlossaryFromClipboard() {
+        guard let raw = NSPasteboard.general.string(forType: .string) else { return }
+        let lines = raw.components(separatedBy: .newlines)
+        let projId = storageManager.activeProject.id
+        let separators = ["->", "=>", "\t", " = ", " : "]
+        for line in lines {
+            let trimmedLine = line.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !trimmedLine.isEmpty else { continue }
+            for sep in separators {
+                if let range = trimmedLine.range(of: sep) {
+                    let src = String(trimmedLine[..<range.lowerBound]).trimmingCharacters(in: .whitespacesAndNewlines)
+                    let dst = String(trimmedLine[range.upperBound...]).trimmingCharacters(in: .whitespacesAndNewlines)
+                    if !src.isEmpty && !dst.isEmpty {
+                        storageManager.addOrUpdateGlossaryEntry(projectId: projId, sourceTerm: src, targetTerm: dst)
+                        break
+                    }
+                }
+            }
+        }
+    }
+
+    private func copyGlossaryToClipboard() {
+        let entries = storageManager.activeProject.glossary
+        guard !entries.isEmpty else { return }
+        let formatted = entries.map { "\($0.sourceTerm)\t\($0.targetTerm)" }.joined(separator: "\n")
+        NSPasteboard.general.clearContents()
+        NSPasteboard.general.setString(formatted, forType: .string)
+        didCopyGlossaryFeedback = true
+        DispatchQueue.main.asyncAfter(deadline: .now() + 1.4) {
+            didCopyGlossaryFeedback = false
+        }
+    }
+
+    private func moveAPIKey(at index: Int, offset: Int) {
+        var keys = storageManager.settings.validAPIKeys
+        let newIndex = index + offset
+        guard index >= 0, index < keys.count, newIndex >= 0, newIndex < keys.count else { return }
+        let item = keys.remove(at: index)
+        keys.insert(item, at: newIndex)
+        var s = storageManager.settings
+        s.apiKeys = keys
+        storageManager.settings = s
+        keyRefreshTrigger = UUID()
+    }
+
+    private func verifiedExamplesPopoverContent(for project: TranslationProject) -> some View {
+        let verifiedItems = storageManager.items.filter { $0.projectId == project.id && $0.isVerified }
+        return VStack(alignment: .leading, spacing: 8) {
+            HStack {
+                Image(systemName: "checkmark.seal.fill")
+                    .foregroundColor(.green)
+                    .font(.system(size: 12))
+                Text(isVi
+                     ? "Câu mẫu chuẩn đã dạy AI — Dự án \"\(project.name)\""
+                     : "Verified Gold Examples — Project \"\(project.name)\"")
+                    .font(.system(size: 12, weight: .semibold))
+                Spacer()
+                Text("(\(verifiedItems.count))")
+                    .font(.system(size: 11, design: .monospaced))
+                    .foregroundColor(.secondary)
+            }
+
+            if verifiedItems.isEmpty {
+                Text(isVi
+                     ? "Chưa có câu mẫu chuẩn nào trong dự án này. Khi dịch văn bản trên Popup, hãy bấm biểu tượng cây bút để sửa và lưu bản dịch chuẩn cho AI học."
+                     : "No verified examples in this project yet. Click the pencil icon on the translation popup to edit and teach AI a verified translation.")
+                    .font(.system(size: 11))
+                    .foregroundColor(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .padding(.vertical, 12)
+            } else {
+                ScrollView {
+                    LazyVStack(alignment: .leading, spacing: 6) {
+                        ForEach(verifiedItems) { item in
+                            HStack(alignment: .top, spacing: 8) {
+                                VStack(alignment: .leading, spacing: 3) {
+                                    if let src = item.sourceText, !src.isEmpty {
+                                        Text(src)
+                                            .font(.system(size: 10.5))
+                                            .foregroundColor(.secondary)
+                                            .lineLimit(2)
+                                    }
+                                    Text(item.translatedText)
+                                        .font(.system(size: 11, weight: .medium))
+                                        .foregroundColor(.primary)
+                                        .lineLimit(3)
+                                }
+                                .frame(maxWidth: .infinity, alignment: .leading)
+
+                                Button(action: {
+                                    storageManager.setTranslationVerified(id: item.id, isVerified: false)
+                                }) {
+                                    Image(systemName: "trash")
+                                        .font(.system(size: 10.5))
+                                        .foregroundColor(.red.opacity(0.85))
+                                        .frame(width: 20, height: 20)
+                                }
+                                .buttonStyle(.borderless)
+                                .help(isVi ? "Gỡ bỏ câu mẫu này khỏi bộ nhớ ưu tiên của AI" : "Remove from Verified Gold Examples")
+                            }
+                            .padding(8)
+                            .background(RoundedRectangle(cornerRadius: 6).fill(Color.secondary.opacity(0.08)))
+                        }
+                    }
+                }
+                .frame(maxHeight: 220)
+            }
+        }
+        .padding(12)
+        .frame(width: 370)
     }
 
     private func pasteAndAddKeyFromClipboard() {
