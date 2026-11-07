@@ -268,6 +268,24 @@ public final class StorageManager: ObservableObject, StorageManaging, @unchecked
         notifyChange()
     }
 
+    public func mergeOrRestoreProjects(_ importedProjects: [TranslationProject]) {
+        guard !importedProjects.isEmpty else { return }
+        lock.lock()
+        for proj in importedProjects {
+            if let idx = _projects.firstIndex(where: { $0.id == proj.id }) {
+                _projects[idx] = proj
+            } else {
+                _projects.append(proj)
+            }
+        }
+        if !_projects.contains(where: { $0.id == TranslationProject.defaultProjectId }) {
+            _projects.insert(TranslationProject.makeDefaultProject(), at: 0)
+        }
+        saveProjects()
+        lock.unlock()
+        notifyChange()
+    }
+
     public func deleteProject(id: UUID) {
         guard id != TranslationProject.defaultProjectId else { return }
         lock.lock()
