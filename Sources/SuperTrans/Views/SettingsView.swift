@@ -69,6 +69,7 @@ public struct SettingsView: View {
     @State private var showingRenameProjectPopover: Bool = false
     @State private var renameProjectDraft: String = ""
     @State private var showingAPIKeyGuidePopover: Bool = false
+    @State private var copiedAPIKeyFeedback: String? = nil
     @State private var newCustomPromptNameInput: String = ""
     @State private var selectedInspectorPromptId: String? = nil
     @FocusState private var isCustomPromptNameFocused: Bool
@@ -271,6 +272,38 @@ public struct SettingsView: View {
                     Text(isVi ? "bản dịch" : "items")
                         .font(.system(size: 11.5))
                         .foregroundColor(.secondary)
+                }
+
+                HStack(spacing: 8) {
+                    Text(isVi ? "Kích thước Popup dịch:" : "Translation Popup Size:")
+                        .font(.system(size: 11.5))
+                        .frame(width: 155, alignment: .leading)
+
+                    if let w = storageManager.settings.popupWidth, let h = storageManager.settings.popupHeight {
+                        Text(isVi ? "Tuỳ chỉnh (\(Int(w)) × \(Int(h)) px)" : "Custom (\(Int(w)) × \(Int(h)) px)")
+                            .font(.system(size: 11, weight: .medium, design: .monospaced))
+                            .foregroundColor(.primary)
+
+                        Button(action: {
+                            var s = storageManager.settings
+                            s.popupWidth = nil
+                            s.popupHeight = nil
+                            storageManager.settings = s
+                        }) {
+                            HStack(spacing: 3) {
+                                Image(systemName: "arrow.counterclockwise")
+                                    .font(.system(size: 9.5))
+                                Text(isVi ? "Đặt lại tự động" : "Reset to Auto")
+                                    .font(.system(size: 10.5, weight: .medium))
+                            }
+                        }
+                        .buttonStyle(.bordered)
+                        .controlSize(.small)
+                    } else {
+                        Text(isVi ? "Tự động co giãn theo nội dung (Kéo cạnh để đổi cỡ)" : "Auto-fit content (Drag edges to resize)")
+                            .font(.system(size: 11))
+                            .foregroundColor(.secondary)
+                    }
                 }
             }
         }
@@ -487,6 +520,21 @@ public struct SettingsView: View {
                 }
 
                 Spacer()
+
+                Menu(isVi ? "Chọn nhanh" : "Presets") {
+                    Button("Option + Shift + T (Default)") {
+                        applyShortcut(forTranslate: false, keyCode: 17, modifiers: UInt32(optionKey | shiftKey))
+                    }
+                    Button("Option + H") {
+                        applyShortcut(forTranslate: false, keyCode: 4, modifiers: UInt32(optionKey))
+                    }
+                    Button("Cmd + Shift + Y") {
+                        applyShortcut(forTranslate: false, keyCode: 16, modifiers: UInt32(cmdKey | shiftKey))
+                    }
+                }
+                .menuStyle(.borderedButton)
+                .controlSize(.small)
+                .fixedSize()
             }
         }
         .padding(9)
@@ -788,6 +836,25 @@ public struct SettingsView: View {
                     .frame(width: 18, height: 18)
             }
             .buttonStyle(.borderless)
+            .help(isRevealed ? (isVi ? "Ẩn API Key" : "Hide API Key") : (isVi ? "Hiện API Key" : "Show API Key"))
+
+            Button(action: {
+                NSPasteboard.general.clearContents()
+                NSPasteboard.general.setString(key, forType: .string)
+                copiedAPIKeyFeedback = key
+                DispatchQueue.main.asyncAfter(deadline: .now() + 1.2) {
+                    if copiedAPIKeyFeedback == key {
+                        copiedAPIKeyFeedback = nil
+                    }
+                }
+            }) {
+                Image(systemName: copiedAPIKeyFeedback == key ? "checkmark" : "doc.on.doc")
+                    .font(.system(size: 10))
+                    .foregroundColor(copiedAPIKeyFeedback == key ? .green : .secondary)
+                    .frame(width: 18, height: 18)
+            }
+            .buttonStyle(.borderless)
+            .help(isVi ? "Sao chép API Key này" : "Copy this API Key")
 
             Button(action: {
                 testSingleKey(key)
@@ -1972,7 +2039,8 @@ public struct SettingsView: View {
 
                 VStack(spacing: 5) {
                     metricRow(label: isVi ? "Tổng số bản dịch đang lưu" : "Total Stored Translations", value: "\(storageManager.items.count)")
-                    metricRow(label: isVi ? "Bản dịch đã ghim" : "Pinned Translations", value: "\(storageManager.items.filter { $0.isPinned }.count)")
+                    metricRow(label: isVi ? "Bản dịch đã ghim / Mẫu chuẩn đã dạy" : "Pinned / Verified Examples", value: "\(storageManager.items.filter { $0.isPinned }.count) / \(storageManager.items.filter { $0.isVerified }.count)")
+                    metricRow(label: isVi ? "Số Dự án & Thuật ngữ từ điển" : "Projects & Glossary Terms", value: "\(storageManager.projects.count) \(isVi ? "dự án" : "projects") · \(storageManager.projects.reduce(0) { $0 + $1.glossary.count }) \(isVi ? "từ" : "terms")")
                     metricRow(label: isVi ? "Dung lượng sử dụng" : "Disk Space Used", value: calculateDiskUsageFormatted())
                 }
                 .padding(8)
@@ -2223,6 +2291,9 @@ public struct SettingsView: View {
 
     private var footerBar: some View {
         HStack {
+            Text(isVi ? "Phím tắt chuyển Tab: ⌘1 – ⌘6" : "Switch Tabs: ⌘1 – ⌘6")
+                .font(.system(size: 10.5))
+                .foregroundColor(.secondary)
             Spacer()
             Button(isVi ? "Xong" : "Done") {
                 onDismiss?()
