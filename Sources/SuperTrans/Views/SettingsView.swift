@@ -638,6 +638,10 @@ public struct SettingsView: View {
             if case .ready = st { return true }
             return false
         }.count
+        let invalidKeys = validKeys.filter { key in
+            if case .invalid = APIKeyRotator.shared.status(for: key, now: statusClockNow) { return true }
+            return false
+        }
         let allRevealed = !validKeys.isEmpty && validKeys.allSatisfy { revealedKeys.contains($0) }
 
         return VStack(alignment: .leading, spacing: 6) {
@@ -665,6 +669,16 @@ public struct SettingsView: View {
                     .onSubmit {
                         addKeysFromInput()
                     }
+
+                if !newAPIKeyInput.isEmpty {
+                    Button(action: { newAPIKeyInput = "" }) {
+                        Image(systemName: "xmark.circle.fill")
+                            .font(.system(size: 11))
+                            .foregroundColor(.secondary)
+                    }
+                    .buttonStyle(.borderless)
+                    .help(isVi ? "Xoá ô nhập" : "Clear input")
+                }
 
                 Button(action: pasteAndAddKeyFromClipboard) {
                     HStack(spacing: 3) {
@@ -785,6 +799,25 @@ public struct SettingsView: View {
                     .buttonStyle(.bordered)
                     .controlSize(.small)
                     .help(isVi ? "Sao chép toàn bộ danh sách API Key vào Clipboard" : "Copy all API Keys to Clipboard")
+
+                    if !invalidKeys.isEmpty {
+                        Button(action: {
+                            for key in invalidKeys {
+                                removeKey(key)
+                            }
+                        }) {
+                            HStack(spacing: 4) {
+                                Image(systemName: "trash")
+                                    .font(.system(size: 10))
+                                Text(isVi ? "Xoá Key lỗi (\(invalidKeys.count))" : "Remove Invalid (\(invalidKeys.count))")
+                                    .font(.system(size: 11))
+                            }
+                            .foregroundColor(.red)
+                        }
+                        .buttonStyle(.bordered)
+                        .controlSize(.small)
+                        .help(isVi ? "Xoá tất cả các API Key không hợp lệ khỏi danh sách" : "Remove all invalid API Keys from the list")
+                    }
                 }
 
                 Spacer()
@@ -2607,6 +2640,41 @@ public struct SettingsView: View {
                 .controlSize(.small)
                 .fixedSize()
 
+                Menu(isVi ? "Gợi ý bảo mật" : "Security Presets") {
+                    let presets: [(name: String, bid: String)] = [
+                        ("Keychain Access", "com.apple.keychainaccess"),
+                        ("1Password", "com.1password.1password"),
+                        ("Bitwarden", "com.bitwarden.desktop"),
+                        ("KeePassXC", "org.keepassxc.keepassxc"),
+                        ("Terminal", "com.apple.Terminal"),
+                        ("iTerm2", "com.googlecode.iterm2")
+                    ]
+                    let unaddedPresets = presets.filter { !ignoredBids.contains($0.bid.lowercased()) }
+
+                    if !unaddedPresets.isEmpty {
+                        Button(isVi ? "Thêm tất cả trình quản lý mật khẩu & Terminal" : "Add All Password Managers & Terminals") {
+                            for p in unaddedPresets {
+                                let iconPath = NSWorkspace.shared.urlForApplication(withBundleIdentifier: p.bid)?.path
+                                storageManager.addIgnoredApp(IgnoredApp(bundleIdentifier: p.bid, name: p.name, iconPath: iconPath))
+                            }
+                        }
+                        Divider()
+                    }
+
+                    ForEach(presets, id: \.bid) { preset in
+                        let isAlreadyIgnored = ignoredBids.contains(preset.bid.lowercased())
+                        Button(isAlreadyIgnored ? "\(preset.name) (\(isVi ? "Đã thêm" : "Added"))" : "\(preset.name) (\(preset.bid))") {
+                            let iconPath = NSWorkspace.shared.urlForApplication(withBundleIdentifier: preset.bid)?.path
+                            storageManager.addIgnoredApp(IgnoredApp(bundleIdentifier: preset.bid, name: preset.name, iconPath: iconPath))
+                        }
+                        .disabled(isAlreadyIgnored)
+                    }
+                }
+                .menuStyle(.borderedButton)
+                .controlSize(.small)
+                .fixedSize()
+                .help(isVi ? "Thêm nhanh các trình quản lý mật khẩu và Terminal phổ biến vào danh sách bỏ qua" : "Quickly add common password managers and terminals to the ignored list")
+
                 Spacer()
 
                 if !storageManager.settings.ignoredApps.isEmpty {
@@ -2858,6 +2926,25 @@ public struct SettingsView: View {
                     }) {
                         HStack(spacing: 4) {
                             Text("nhanqv-ai/SuperTrans")
+                                .font(.system(size: 11.5, weight: .medium))
+                            Image(systemName: "arrow.up.forward.square")
+                                .font(.system(size: 10))
+                        }
+                        .foregroundColor(.accentColor)
+                    }
+                    .buttonStyle(.plain)
+
+                    Text("·")
+                        .font(.system(size: 11.5))
+                        .foregroundColor(.secondary)
+
+                    Button(action: {
+                        if let url = URL(string: "https://github.com/nhanqv-ai/SuperTrans/releases") {
+                            NSWorkspace.shared.open(url)
+                        }
+                    }) {
+                        HStack(spacing: 3) {
+                            Text(isVi ? "Nhật ký phiên bản" : "Releases")
                                 .font(.system(size: 11.5, weight: .medium))
                             Image(systemName: "arrow.up.forward.square")
                                 .font(.system(size: 10))
