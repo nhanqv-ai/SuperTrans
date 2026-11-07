@@ -70,8 +70,10 @@ public struct SettingsView: View {
     @State private var renameProjectDraft: String = ""
     @State private var showingVerifiedExamplesPopover: Bool = false
     @State private var didCopyGlossaryFeedback: Bool = false
+    @State private var showingClearGlossaryConfirmation: Bool = false
     @State private var showingAPIKeyGuidePopover: Bool = false
     @State private var copiedAPIKeyFeedback: String? = nil
+    @State private var didCopyAllKeysFeedback: Bool = false
     @State private var didCopyPromptFeedback: Bool = false
     @State private var newCustomPromptNameInput: String = ""
     @State private var selectedInspectorPromptId: String? = nil
@@ -272,6 +274,19 @@ public struct SettingsView: View {
                     Text(isVi ? "bản dịch" : "items")
                         .font(.system(size: 11.5))
                         .foregroundColor(.secondary)
+
+                    Menu(isVi ? "Mức nhanh" : "Presets") {
+                        ForEach([50, 100, 250, 500, 1000], id: \.self) { presetCap in
+                            Button(presetCap == 100 ? (isVi ? "100 (Mặc định)" : "100 (Default)") : "\(presetCap)") {
+                                var s = storageManager.settings
+                                s.capacity = presetCap
+                                storageManager.settings = s
+                            }
+                        }
+                    }
+                    .menuStyle(.borderedButton)
+                    .controlSize(.small)
+                    .fixedSize()
                 }
 
                 HStack(spacing: 8) {
@@ -600,13 +615,24 @@ public struct SettingsView: View {
     }
 
     private var apiKeysCard: some View {
-        VStack(alignment: .leading, spacing: 6) {
+        let validKeys = storageManager.settings.validAPIKeys
+        let readyCount = validKeys.filter { key in
+            let st = APIKeyRotator.shared.status(for: key, now: statusClockNow)
+            if case .active = st { return true }
+            if case .ready = st { return true }
+            return false
+        }.count
+        let allRevealed = !validKeys.isEmpty && validKeys.allSatisfy { revealedKeys.contains($0) }
+
+        return VStack(alignment: .leading, spacing: 6) {
             HStack {
                 Text(loc.tr(.geminiAPIKeysSection))
                     .font(.system(size: 12.5, weight: .semibold))
                     .foregroundColor(.primary)
                 Spacer()
-                Text("(\(storageManager.settings.validAPIKeys.count) keys)")
+                Text(validKeys.isEmpty
+                     ? "(0 keys)"
+                     : (isVi ? "(\(validKeys.count) keys · \(readyCount) sẵn sàng)" : "(\(validKeys.count) keys · \(readyCount) ready)"))
                     .font(.system(size: 11, design: .monospaced))
                     .foregroundColor(.secondary)
             }
@@ -710,6 +736,39 @@ public struct SettingsView: View {
                     }
                     .buttonStyle(.bordered)
                     .controlSize(.small)
+
+                    Button(action: {
+                        if allRevealed {
+                            revealedKeys.removeAll()
+                        } else {
+                            revealedKeys = Set(validKeys)
+                        }
+                    }) {
+                        Image(systemName: allRevealed ? "eye.slash" : "eye")
+                            .font(.system(size: 10.5))
+                    }
+                    .buttonStyle(.bordered)
+                    .controlSize(.small)
+                    .help(allRevealed
+                          ? (isVi ? "Ẩn tất cả API Key" : "Hide all API Keys")
+                          : (isVi ? "Hiện tất cả API Key" : "Show all API Keys"))
+
+                    Button(action: {
+                        let joined = validKeys.joined(separator: "\n")
+                        NSPasteboard.general.clearContents()
+                        NSPasteboard.general.setString(joined, forType: .string)
+                        didCopyAllKeysFeedback = true
+                        DispatchQueue.main.asyncAfter(deadline: .now() + 1.4) {
+                            didCopyAllKeysFeedback = false
+                        }
+                    }) {
+                        Image(systemName: didCopyAllKeysFeedback ? "checkmark" : "doc.on.doc")
+                            .font(.system(size: 10))
+                            .foregroundColor(didCopyAllKeysFeedback ? .green : .primary)
+                    }
+                    .buttonStyle(.bordered)
+                    .controlSize(.small)
+                    .help(isVi ? "Sao chép toàn bộ danh sách API Key vào Clipboard" : "Copy all API Keys to Clipboard")
                 }
 
                 Spacer()
@@ -1008,6 +1067,21 @@ public struct SettingsView: View {
                 .labelsHidden()
                 .pickerStyle(.menu)
                 .frame(maxWidth: .infinity, alignment: .leading)
+
+                if storageManager.settings.selectedModel != AppSettings.defaultModel || showCustomInput {
+                    Button(action: {
+                        isCustomModelMode = false
+                        var s = storageManager.settings
+                        s.selectedModel = AppSettings.defaultModel
+                        storageManager.settings = s
+                    }) {
+                        Image(systemName: "arrow.counterclockwise")
+                            .font(.system(size: 10.5))
+                    }
+                    .buttonStyle(.bordered)
+                    .controlSize(.small)
+                    .help(isVi ? "Đặt lại về Model nhanh nhất khuyên dùng (\(AppSettings.defaultModel))" : "Reset to fastest recommended model (\(AppSettings.defaultModel))")
+                }
             }
 
             if showCustomInput {
@@ -1786,6 +1860,30 @@ public struct SettingsView: View {
                         .help(isVi ? "Sao chép toàn bộ từ điển thuật ngữ của dự án này vào Clipboard" : "Copy all glossary entries of this project to Clipboard")
                     }
 
+                    if activeProj.glossary.count > 1 {
+                        Button(action: { showingClearGlossaryConfirmation = true }) {
+                            Image(systemName: "trash")
+                                .font(.system(size: 9.5))
+                                .foregroundColor(.red.opacity(0.85))
+                        }
+                        .buttonStyle(.bordered)
+                        .controlSize(.mini)
+                        .help(isVi ? "Xoá toàn bộ từ điển thuật ngữ của dự án này" : "Clear all glossary entries of this project")
+                        .confirmationDialog(
+                            isVi ? "Xoá toàn bộ \(activeProj.glossary.count) thuật ngữ của dự án \"\(activeProj.name)\"?" : "Clear all \(activeProj.glossary.count) glossary terms in project \"\(activeProj.name)\"?",
+                            isPresented: $showingClearGlossaryConfirmation,
+                            titleVisibility: .visible
+                        ) {
+                            Button(isVi ? "Xoá toàn bộ từ điển" : "Clear All Terms", role: .destructive) {
+                                var updated = activeProj
+                                updated.glossary.removeAll()
+                                storageManager.updateProject(updated)
+                                glossarySearchQuery = ""
+                            }
+                            Button(isVi ? "Hủy" : "Cancel", role: .cancel) {}
+                        }
+                    }
+
                     if activeProj.glossary.count >= 3 {
                         HStack(spacing: 4) {
                             Image(systemName: "magnifyingglass")
@@ -1819,9 +1917,17 @@ public struct SettingsView: View {
                         .textFieldStyle(.roundedBorder)
                         .font(.system(size: 11))
 
-                    Image(systemName: "arrow.right")
-                        .font(.system(size: 9, weight: .bold))
-                        .foregroundColor(.secondary)
+                    Button(action: {
+                        let tmp = newGlossarySourceInput
+                        newGlossarySourceInput = newGlossaryTargetInput
+                        newGlossaryTargetInput = tmp
+                    }) {
+                        Image(systemName: "arrow.left.arrow.right")
+                            .font(.system(size: 9.5, weight: .bold))
+                            .foregroundColor(.secondary)
+                    }
+                    .buttonStyle(.borderless)
+                    .help(isVi ? "Đảo chiều từ gốc và nghĩa chuẩn" : "Swap source and target terms")
 
                     TextField(isVi ? "Nghĩa chuẩn (VD: tổng đài)" : "Target term", text: $newGlossaryTargetInput)
                         .textFieldStyle(.roundedBorder)
@@ -1829,6 +1935,19 @@ public struct SettingsView: View {
                         .onSubmit {
                             addGlossaryEntryFromInput()
                         }
+
+                    if !newGlossarySourceInput.isEmpty || !newGlossaryTargetInput.isEmpty {
+                        Button(action: {
+                            newGlossarySourceInput = ""
+                            newGlossaryTargetInput = ""
+                        }) {
+                            Image(systemName: "xmark.circle.fill")
+                                .font(.system(size: 11))
+                                .foregroundColor(.secondary)
+                        }
+                        .buttonStyle(.borderless)
+                        .help(isVi ? "Xoá ô đang nhập" : "Clear input fields")
+                    }
 
                     Button(isVi ? "Lưu" : "Save") {
                         addGlossaryEntryFromInput()
