@@ -1521,6 +1521,18 @@ public struct SettingsView: View {
                                 }
                                 .buttonStyle(.borderedProminent)
                                 .controlSize(.small)
+                            } else {
+                                Button(action: {
+                                    var s = storageManager.settings
+                                    s.selectedPromptId = customPreset.id.uuidString
+                                    s.customSystemPrompt = customPreset.prompt
+                                    storageManager.settings = s
+                                }) {
+                                    Text(isVi ? "Dùng" : "Use")
+                                        .font(.system(size: 10.5, weight: .medium))
+                                }
+                                .buttonStyle(.borderedProminent)
+                                .controlSize(.small)
                             }
 
                             Button(action: {
@@ -1534,6 +1546,18 @@ public struct SettingsView: View {
                             .buttonStyle(.bordered)
                             .controlSize(.small)
                             .help(isVi ? "Sao chép nội dung Prompt" : "Copy Prompt text")
+
+                            Button(action: {
+                                let currentObj = storageManager.settings.customPromptPresets.first(where: { $0.id == customPreset.id }) ?? customPreset
+                                let copyTitle = currentObj.name + (isVi ? " (Bản sao)" : " (Copy)")
+                                createNewCustomPromptPreset(basePrompt: currentObj.prompt, baseName: copyTitle)
+                            }) {
+                                Image(systemName: "plus.square.on.square")
+                                    .font(.system(size: 10))
+                            }
+                            .buttonStyle(.bordered)
+                            .controlSize(.small)
+                            .help(isVi ? "Nhân bản Custom Prompt này" : "Duplicate this Custom Prompt")
                         }
 
                         TextEditor(text: Binding(
@@ -2543,14 +2567,21 @@ public struct SettingsView: View {
 
                     Spacer()
 
-                    Button(action: { showingResetConfirmation = true }) {
-                        HStack(spacing: 4) {
-                            Image(systemName: "arrow.counterclockwise")
-                            Text(isVi ? "Khôi phục cài đặt gốc" : "Reset Preferences")
+                    Menu(isVi ? "Sao lưu & Khôi phục" : "Backup & Restore") {
+                        Button(isVi ? "Xuất bản sao lưu cấu hình & dự án (.json)..." : "Export Settings & Projects Backup (.json)...") {
+                            exportBackupPanel()
+                        }
+                        Button(isVi ? "Nhập bản sao lưu cấu hình & dự án (.json)..." : "Import Settings & Projects Backup (.json)...") {
+                            importBackupPanel()
+                        }
+                        Divider()
+                        Button(isVi ? "Khôi phục cài đặt gốc..." : "Reset Preferences to Default...", role: .destructive) {
+                            showingResetConfirmation = true
                         }
                     }
-                    .buttonStyle(.bordered)
+                    .menuStyle(.borderedButton)
                     .controlSize(.small)
+                    .fixedSize()
                     .confirmationDialog(
                         isVi ? "Khôi phục các tuỳ chọn cài đặt về mặc định? (API Key, Dự án và Lịch sử dịch vẫn được giữ nguyên)" : "Reset preferences to default? (Your API Keys, Projects, and Translation History will be preserved)",
                         isPresented: $showingResetConfirmation,
@@ -2778,6 +2809,57 @@ public struct SettingsView: View {
         fresh.customPromptPresets = current.customPromptPresets
         fresh.activeProjectId = current.activeProjectId
         storageManager.settings = fresh
+    }
+
+    private struct SuperTransBackupPayload: Codable {
+        var exportedAt: Date
+        var settings: AppSettings
+        var projects: [TranslationProject]
+    }
+
+    private func exportBackupPanel() {
+        NSApp.activate(ignoringOtherApps: true)
+        let panel = NSSavePanel()
+        panel.allowedContentTypes = [.json]
+        let formatter = DateFormatter()
+        formatter.dateFormat = "yyyy-MM-dd"
+        panel.nameFieldStringValue = "SuperTrans-Backup-\(formatter.string(from: Date())).json"
+        panel.canCreateDirectories = true
+
+        guard panel.runModal() == .OK, let targetURL = panel.url else { return }
+        let payload = SuperTransBackupPayload(
+            exportedAt: Date(),
+            settings: storageManager.settings,
+            projects: storageManager.projects
+        )
+        let enc = JSONEncoder()
+        enc.outputFormatting = [.prettyPrinted, .sortedKeys]
+        enc.dateEncodingStrategy = .iso8601
+        if let data = try? enc.encode(payload) {
+            try? data.write(to: targetURL, options: .atomic)
+        }
+    }
+
+    private func importBackupPanel() {
+        NSApp.activate(ignoringOtherApps: true)
+        let panel = NSOpenPanel()
+        panel.allowedContentTypes = [.json]
+        panel.allowsMultipleSelection = false
+        panel.canChooseDirectories = false
+        panel.canChooseFiles = true
+
+        guard panel.runModal() == .OK, let sourceURL = panel.url,
+              let data = try? Data(contentsOf: sourceURL) else { return }
+        let dec = JSONDecoder()
+        dec.dateDecodingStrategy = .iso8601
+        if let payload = try? dec.decode(SuperTransBackupPayload.self, from: data) {
+            storageManager.mergeOrRestoreProjects(payload.projects)
+            storageManager.settings = payload.settings
+            keyRefreshTrigger = UUID()
+        } else if let settingsOnly = try? dec.decode(AppSettings.self, from: data) {
+            storageManager.settings = settingsOnly
+            keyRefreshTrigger = UUID()
+        }
     }
 
     // MARK: - Footer Bar
