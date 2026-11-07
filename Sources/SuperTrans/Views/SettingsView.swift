@@ -87,6 +87,8 @@ public struct SettingsView: View {
     @State private var copiedIgnoredAppBid: String? = nil
     @State private var showingClearIgnoredAppsConfirmation: Bool = false
     @State private var didCopyVersionInfoFeedback: Bool = false
+    @State private var showingDeleteProjectConfirmation: Bool = false
+    @State private var pendingDeleteCustomPromptId: UUID? = nil
     @State private var newCustomPromptNameInput: String = ""
     @State private var selectedInspectorPromptId: String? = nil
     @FocusState private var isCustomPromptNameFocused: Bool
@@ -243,6 +245,20 @@ public struct SettingsView: View {
                     .labelsHidden()
                     .pickerStyle(.menu)
                     .frame(width: 210)
+
+                    if storageManager.settings.targetLanguage != "Vietnamese" {
+                        Button(action: {
+                            var s = storageManager.settings
+                            s.targetLanguage = "Vietnamese"
+                            storageManager.settings = s
+                        }) {
+                            Image(systemName: "arrow.counterclockwise")
+                                .font(.system(size: 10))
+                        }
+                        .buttonStyle(.bordered)
+                        .controlSize(.small)
+                        .help(isVi ? "Đặt lại về Tiếng Việt (Mặc định)" : "Reset to Vietnamese (Default)")
+                    }
                 }
 
                 HStack(spacing: 8) {
@@ -1293,6 +1309,16 @@ public struct SettingsView: View {
         storageManager.settings = s
     }
 
+    private func applyCustomPromptTemplate(id: UUID, template: String) {
+        var s = storageManager.settings
+        guard let idx = s.customPromptPresets.firstIndex(where: { $0.id == id }) else { return }
+        s.customPromptPresets[idx].prompt = template
+        if s.resolvedActivePromptId == id.uuidString {
+            s.customSystemPrompt = template
+        }
+        storageManager.settings = s
+    }
+
     private func copyPromptToClipboard(_ text: String) {
         NSPasteboard.general.clearContents()
         NSPasteboard.general.setString(text, forType: .string)
@@ -1557,7 +1583,7 @@ public struct SettingsView: View {
                                           : (isVi ? "Đang hiển thị trên Popup — Bấm để ẩn" : "Visible in Popup — Click to hide"))
 
                                     Button(action: {
-                                        deleteCustomPromptPreset(id: customPreset.id)
+                                        pendingDeleteCustomPromptId = customPreset.id
                                     }) {
                                         Image(systemName: "trash")
                                             .font(.system(size: 10))
@@ -1566,6 +1592,22 @@ public struct SettingsView: View {
                                     }
                                     .buttonStyle(.borderless)
                                     .help(isVi ? "Xoá Custom Prompt này" : "Delete this Custom Prompt")
+                                    .confirmationDialog(
+                                        isVi ? "Xoá Custom Prompt \"\(displayTitle)\"?" : "Delete Custom Prompt \"\(displayTitle)\"?",
+                                        isPresented: Binding(
+                                            get: { pendingDeleteCustomPromptId == customPreset.id },
+                                            set: { if !$0 { pendingDeleteCustomPromptId = nil } }
+                                        ),
+                                        titleVisibility: .visible
+                                    ) {
+                                        Button(isVi ? "Xoá Custom Prompt" : "Delete Custom Prompt", role: .destructive) {
+                                            deleteCustomPromptPreset(id: customPreset.id)
+                                            pendingDeleteCustomPromptId = nil
+                                        }
+                                        Button(isVi ? "Hủy" : "Cancel", role: .cancel) {
+                                            pendingDeleteCustomPromptId = nil
+                                        }
+                                    }
                                 }
                                 .padding(.horizontal, 6)
                                 .padding(.vertical, 4)
@@ -1727,15 +1769,52 @@ public struct SettingsView: View {
                             )
 
                             let charCount = (storageManager.settings.customPromptPresets.first(where: { $0.id == customPreset.id })?.prompt ?? customPreset.prompt).count
-                            Text(isVi ? "\(charCount) ký tự" : "\(charCount) chars")
-                                .font(.system(size: 9.5, design: .monospaced))
-                                .foregroundColor(.secondary.opacity(0.8))
-                                .padding(.horizontal, 6)
-                                .padding(.vertical, 2)
-                                .background(Color(nsColor: .windowBackgroundColor).opacity(0.85))
-                                .cornerRadius(4)
-                                .padding(6)
-                                .allowsHitTesting(false)
+                            HStack {
+                                Menu(isVi ? "Mẫu nhanh" : "Templates") {
+                                    Button(isVi ? "Dịch thuật chuẩn xác & Tự nhiên (Mặc định)" : "Accurate & Natural Translation (Default)") {
+                                        applyCustomPromptTemplate(id: customPreset.id, template: AppSettings.defaultSystemPrompt)
+                                    }
+                                    Button(isVi ? "Hiệu đính & Tự nhiên hoá câu văn" : "Proofread & Naturalize Tone") {
+                                        applyCustomPromptTemplate(
+                                            id: customPreset.id,
+                                            template: isVi
+                                                ? "Dịch văn bản sang {{TARGET_LANGUAGE}} với văn phong cực kỳ tự nhiên, mạch lạc, trau chuốt như người bản xứ. Chỉ trả về kết quả dịch cuối cùng, không giải thích."
+                                                : "Translate the text into {{TARGET_LANGUAGE}} with a natural, fluent, native-sounding tone. Return ONLY the final translated text without explanation."
+                                        )
+                                    }
+                                    Button(isVi ? "Tóm tắt ý chính (Bullet points)" : "Summarize Key Points (Bullets)") {
+                                        applyCustomPromptTemplate(
+                                            id: customPreset.id,
+                                            template: isVi
+                                                ? "Dịch và tóm tắt các ý chính của văn bản sang {{TARGET_LANGUAGE}} dưới dạng gạch đầu dòng ngắn gọn, súc tích. Chỉ trả về kết quả, không dẫn nhập."
+                                                : "Translate and summarize the key points of the text into {{TARGET_LANGUAGE}} as concise bullet points. Return ONLY the bullet points."
+                                        )
+                                    }
+                                    Button(isVi ? "Dịch kèm giải thích thuật ngữ quan trọng" : "Translate + Explain Key Terms") {
+                                        applyCustomPromptTemplate(
+                                            id: customPreset.id,
+                                            template: isVi
+                                                ? "Dịch văn bản sang {{TARGET_LANGUAGE}} chính xác. Sau bản dịch, liệt kê ngắn gọn tối đa 3 thuật ngữ/từ vựng quan trọng kèm giải nghĩa ngắn."
+                                                : "Translate the text accurately into {{TARGET_LANGUAGE}}. Below the translation, briefly list up to 3 key terms or vocabulary items with short explanations."
+                                        )
+                                    }
+                                }
+                                .menuStyle(.borderedButton)
+                                .controlSize(.mini)
+                                .fixedSize()
+
+                                Spacer()
+
+                                Text(isVi ? "\(charCount) ký tự" : "\(charCount) chars")
+                                    .font(.system(size: 9.5, design: .monospaced))
+                                    .foregroundColor(.secondary.opacity(0.8))
+                                    .padding(.horizontal, 6)
+                                    .padding(.vertical, 2)
+                                    .background(Color(nsColor: .windowBackgroundColor).opacity(0.85))
+                                    .cornerRadius(4)
+                                    .allowsHitTesting(false)
+                            }
+                            .padding(6)
                         }
                     } else if let builtinPreset = AppSettings.promptPresets.first(where: { $0.id == inspectedId }) ?? AppSettings.promptPresets.first {
                         let isHidden = settings.isBuiltinPromptHidden(builtinPreset.id)
@@ -1962,7 +2041,7 @@ public struct SettingsView: View {
 
                     if activeProj.id != TranslationProject.defaultProjectId {
                         Button(role: .destructive) {
-                            storageManager.deleteProject(id: activeProj.id)
+                            showingDeleteProjectConfirmation = true
                         } label: {
                             Image(systemName: "trash")
                                 .font(.system(size: 11))
@@ -1971,6 +2050,16 @@ public struct SettingsView: View {
                         .buttonStyle(.bordered)
                         .controlSize(.small)
                         .help(isVi ? "Xoá dự án này" : "Delete this project")
+                        .confirmationDialog(
+                            isVi ? "Xoá dự án \"\(activeProj.name)\"? Các bản dịch trong dự án sẽ được chuyển về dự án Mặc định." : "Delete project \"\(activeProj.name)\"? Its translations will be moved to the Default project.",
+                            isPresented: $showingDeleteProjectConfirmation,
+                            titleVisibility: .visible
+                        ) {
+                            Button(isVi ? "Xoá dự án" : "Delete Project", role: .destructive) {
+                                storageManager.deleteProject(id: activeProj.id)
+                            }
+                            Button(isVi ? "Hủy" : "Cancel", role: .cancel) {}
+                        }
                     }
                 }
 
@@ -2136,6 +2225,20 @@ public struct SettingsView: View {
                     }
 
                     if activeProj.glossary.count > 1 {
+                        Button(action: {
+                            var updated = activeProj
+                            updated.glossary.sort {
+                                $0.sourceTerm.localizedCaseInsensitiveCompare($1.sourceTerm) == .orderedAscending
+                            }
+                            storageManager.updateProject(updated)
+                        }) {
+                            Image(systemName: "arrow.up.arrow.down")
+                                .font(.system(size: 9.5))
+                        }
+                        .buttonStyle(.bordered)
+                        .controlSize(.mini)
+                        .help(isVi ? "Sắp xếp từ điển thuật ngữ theo thứ tự A–Z" : "Sort glossary terms alphabetically (A–Z)")
+
                         Button(action: { showingClearGlossaryConfirmation = true }) {
                             Image(systemName: "trash")
                                 .font(.system(size: 9.5))
