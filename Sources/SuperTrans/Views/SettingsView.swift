@@ -46,7 +46,12 @@ public struct SettingsView: View {
         }
     }
 
-    @State private var selectedTab: SettingsTab = .general
+    @AppStorage("SuperTrans.lastSelectedSettingsTab") private var selectedTabRaw: String = SettingsTab.general.rawValue
+
+    private var selectedTab: SettingsTab {
+        get { SettingsTab(rawValue: selectedTabRaw) ?? .general }
+        nonmutating set { selectedTabRaw = newValue.rawValue }
+    }
     @State private var isCustomModelMode: Bool = false
     @State private var statusClockNow: Date = Date()
     private let statusTimer = Timer.publish(every: 1.0, on: .main, in: .common).autoconnect()
@@ -1744,6 +1749,16 @@ public struct SettingsView: View {
                         .padding(10)
                     }
 
+                    Button(action: {
+                        duplicateActiveProject()
+                    }) {
+                        Image(systemName: "plus.square.on.square")
+                            .font(.system(size: 11))
+                    }
+                    .buttonStyle(.bordered)
+                    .controlSize(.small)
+                    .help(isVi ? "Nhân bản dự án này (sao chép Ghi chú chuyên ngành & Từ điển thuật ngữ)" : "Duplicate this project (copies domain note & glossary)")
+
                     if activeProj.id != TranslationProject.defaultProjectId {
                         Button(role: .destructive) {
                             storageManager.deleteProject(id: activeProj.id)
@@ -2055,6 +2070,17 @@ public struct SettingsView: View {
         guard !name.isEmpty else { return }
         _ = storageManager.createProject(name: name)
         newProjectNameInput = ""
+    }
+
+    private func duplicateActiveProject() {
+        let source = storageManager.activeProject
+        let copySuffix = isVi ? " (Bản sao)" : " (Copy)"
+        var created = storageManager.createProject(name: source.name + copySuffix, domainNote: source.domainNote)
+        created.glossary = source.glossary.map { entry in
+            GlossaryEntry(sourceTerm: entry.sourceTerm, targetTerm: entry.targetTerm)
+        }
+        storageManager.updateProject(created)
+        storageManager.selectActiveProject(id: created.id)
     }
 
     private func addGlossaryEntryFromInput() {
@@ -2756,9 +2782,84 @@ public struct SettingsView: View {
 
     // MARK: - Footer Bar
 
+    private var activePromptShortTitle: String {
+        let s = storageManager.settings
+        let activeId = s.resolvedActivePromptId
+        if let builtin = AppSettings.promptPresets.first(where: { $0.id == activeId }) {
+            return isVi ? builtin.shortTitleVi : builtin.shortTitleEn
+        }
+        if let custom = s.customPromptPresets.first(where: { $0.id.uuidString == activeId }) {
+            let trimmed = custom.name.trimmingCharacters(in: .whitespacesAndNewlines)
+            return trimmed.isEmpty ? (isVi ? "Prompt tuỳ chỉnh" : "Custom Prompt") : trimmed
+        }
+        return isVi ? "Mặc định" : "Default"
+    }
+
     private var footerBar: some View {
-        HStack {
+        let keyCount = storageManager.settings.validAPIKeys.count
+        let activeProjName = storageManager.activeProject.name
+
+        return HStack(spacing: 10) {
+            Button(action: {
+                stopShortcutRecording()
+                selectedTab = .geminiAI
+            }) {
+                HStack(spacing: 4) {
+                    Circle()
+                        .fill(keyCount > 0 ? Color.green : Color.orange)
+                        .frame(width: 6, height: 6)
+                    Text(keyCount > 0
+                         ? "\(keyCount) API Key"
+                         : (isVi ? "Chưa có Key" : "No API Key"))
+                        .font(.system(size: 10.5, weight: .medium))
+                        .foregroundColor(keyCount > 0 ? .secondary : .orange)
+                }
+            }
+            .buttonStyle(.plain)
+            .help(isVi ? "Chuyển tới tab Gemini AI" : "Go to Gemini AI tab")
+
+            Text("·")
+                .font(.system(size: 10.5))
+                .foregroundColor(.secondary.opacity(0.6))
+
+            Button(action: {
+                stopShortcutRecording()
+                selectedTab = .projects
+            }) {
+                HStack(spacing: 3) {
+                    Image(systemName: "folder")
+                        .font(.system(size: 9.5))
+                    Text(activeProjName)
+                        .font(.system(size: 10.5, weight: .medium))
+                        .lineLimit(1)
+                }
+                .foregroundColor(.secondary)
+            }
+            .buttonStyle(.plain)
+            .help(isVi ? "Dự án đang chọn — Bấm để mở tab Dự án" : "Active Project — Click to open Projects tab")
+
+            Text("·")
+                .font(.system(size: 10.5))
+                .foregroundColor(.secondary.opacity(0.6))
+
+            Button(action: {
+                stopShortcutRecording()
+                selectedTab = .prompt
+            }) {
+                HStack(spacing: 3) {
+                    Image(systemName: "text.bubble")
+                        .font(.system(size: 9.5))
+                    Text(activePromptShortTitle)
+                        .font(.system(size: 10.5, weight: .medium))
+                        .lineLimit(1)
+                }
+                .foregroundColor(.secondary)
+            }
+            .buttonStyle(.plain)
+            .help(isVi ? "Prompt đang dùng — Bấm để mở tab Prompt" : "Active Prompt — Click to open Prompt tab")
+
             Spacer()
+
             Button(isVi ? "Xong" : "Done") {
                 onDismiss?()
             }
