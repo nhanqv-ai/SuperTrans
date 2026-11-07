@@ -1904,19 +1904,53 @@ public struct SettingsView: View {
                     .foregroundColor(.accentColor)
                 }
 
-                TextField(
-                    isVi ? "Ghi chú chuyên ngành / văn phong cho dự án này (VD: Tài liệu y khoa, giữ nguyên tên thuốc)..." : "Domain / style guidelines for this project...",
-                    text: Binding<String>(
-                        get: { activeProj.domainNote },
-                        set: { newNote in
-                            var updated = activeProj
-                            updated.domainNote = newNote
-                            storageManager.updateProject(updated)
-                        }
+                HStack(spacing: 6) {
+                    TextField(
+                        isVi ? "Ghi chú chuyên ngành / văn phong cho dự án này (VD: Tài liệu y khoa, giữ nguyên tên thuốc)..." : "Domain / style guidelines for this project...",
+                        text: Binding<String>(
+                            get: { activeProj.domainNote },
+                            set: { newNote in
+                                var updated = activeProj
+                                updated.domainNote = newNote
+                                storageManager.updateProject(updated)
+                            }
+                        )
                     )
-                )
-                .textFieldStyle(.roundedBorder)
-                .font(.system(size: 11))
+                    .textFieldStyle(.roundedBorder)
+                    .font(.system(size: 11))
+
+                    Menu(isVi ? "Mẫu gợi ý" : "Templates") {
+                        Button(isVi ? "IT / Phần mềm (Giữ nguyên tên biến, API, thuật ngữ kỹ thuật)" : "IT / Software (Keep code, APIs, technical terms)") {
+                            applyDomainNoteTemplate(isVi
+                                ? "Tài liệu kỹ thuật phần mềm & IT. Giữ nguyên tên biến, hàm, API, câu lệnh CLI và thuật ngữ chuyên ngành phổ biến."
+                                : "Software engineering & IT documentation. Preserve variable names, APIs, CLI commands, and standard technical terms.")
+                        }
+                        Button(isVi ? "Doanh nghiệp / BPO Nhật - Việt (Văn phong lịch sự, trang trọng)" : "Business / BPO (Polite, formal corporate tone)") {
+                            applyDomainNoteTemplate(isVi
+                                ? "Giao tiếp doanh nghiệp & BPO. Dịch lịch sự, rõ ràng, trang trọng, truyền tải chính xác kính ngữ và hạng mục công việc."
+                                : "Corporate & BPO communication. Use a polite, formal, and clear tone, accurately conveying honorifics and action items.")
+                        }
+                        Button(isVi ? "Tài chính / Ngân hàng (Chuẩn thuật ngữ kế toán, ngân hàng)" : "Finance / Banking (Accurate financial & accounting terms)") {
+                            applyDomainNoteTemplate(isVi
+                                ? "Tài liệu tài chính, ngân hàng & kế toán. Sử dụng thuật ngữ tài chính chuẩn xác, nhất quán số liệu và đơn vị tiền tệ."
+                                : "Financial, banking & accounting documents. Use precise financial terminology and keep figures/currencies consistent.")
+                        }
+                        Button(isVi ? "Y khoa / Dược phẩm (Giữ nguyên tên hoạt chất, thuật ngữ y học)" : "Medical / Pharma (Keep active ingredients & clinical terms)") {
+                            applyDomainNoteTemplate(isVi
+                                ? "Tài liệu y khoa & dược phẩm. Dịch chuẩn xác thuật ngữ lâm sàng, giữ nguyên tên quốc tế của thuốc và hoạt chất."
+                                : "Medical & pharmaceutical documents. Translate clinical terms accurately and preserve international drug/ingredient names.")
+                        }
+                        if !activeProj.domainNote.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                            Divider()
+                            Button(isVi ? "Xoá ghi chú ngữ cảnh" : "Clear Domain Note", role: .destructive) {
+                                applyDomainNoteTemplate("")
+                            }
+                        }
+                    }
+                    .menuStyle(.borderedButton)
+                    .controlSize(.small)
+                    .fixedSize()
+                }
             }
             .padding(10)
             .frame(maxWidth: .infinity, alignment: .leading)
@@ -2152,6 +2186,12 @@ public struct SettingsView: View {
         newProjectNameInput = ""
     }
 
+    private func applyDomainNoteTemplate(_ note: String) {
+        var updated = storageManager.activeProject
+        updated.domainNote = note
+        storageManager.updateProject(updated)
+    }
+
     private func duplicateActiveProject() {
         let source = storageManager.activeProject
         let copySuffix = isVi ? " (Bản sao)" : " (Copy)"
@@ -2236,6 +2276,20 @@ public struct SettingsView: View {
                 Text("(\(verifiedItems.count))")
                     .font(.system(size: 11, design: .monospaced))
                     .foregroundColor(.secondary)
+
+                if verifiedItems.count > 1 {
+                    Button(action: {
+                        for item in verifiedItems {
+                            storageManager.setTranslationVerified(id: item.id, isVerified: false)
+                        }
+                    }) {
+                        Text(isVi ? "Gỡ tất cả" : "Clear All")
+                            .font(.system(size: 10))
+                    }
+                    .buttonStyle(.bordered)
+                    .controlSize(.mini)
+                    .help(isVi ? "Gỡ bỏ toàn bộ câu mẫu chuẩn trong dự án này" : "Remove all verified examples in this project")
+                }
             }
 
             if verifiedItems.isEmpty {
@@ -2264,6 +2318,18 @@ public struct SettingsView: View {
                                         .lineLimit(3)
                                 }
                                 .frame(maxWidth: .infinity, alignment: .leading)
+
+                                Button(action: {
+                                    NSPasteboard.general.clearContents()
+                                    NSPasteboard.general.setString(item.translatedText, forType: .string)
+                                }) {
+                                    Image(systemName: "doc.on.doc")
+                                        .font(.system(size: 10.5))
+                                        .foregroundColor(.secondary)
+                                        .frame(width: 20, height: 20)
+                                }
+                                .buttonStyle(.borderless)
+                                .help(isVi ? "Sao chép bản dịch chuẩn" : "Copy verified translation")
 
                                 Button(action: {
                                     storageManager.setTranslationVerified(id: item.id, isVerified: false)
@@ -2586,6 +2652,20 @@ public struct SettingsView: View {
                 .font(.system(size: 10, design: .monospaced))
                 .foregroundColor(.secondary)
                 .lineLimit(1)
+
+            if let path = app.iconPath ?? NSWorkspace.shared.urlForApplication(withBundleIdentifier: app.bundleIdentifier)?.path,
+               FileManager.default.fileExists(atPath: path) {
+                Button(action: {
+                    NSWorkspace.shared.selectFile(path, inFileViewerRootedAtPath: "")
+                }) {
+                    Image(systemName: "folder")
+                        .font(.system(size: 10))
+                        .foregroundColor(.secondary)
+                        .frame(width: 18, height: 18)
+                }
+                .buttonStyle(.borderless)
+                .help(isVi ? "Hiển thị ứng dụng trong Finder" : "Reveal app in Finder")
+            }
 
             Button(action: {
                 storageManager.removeIgnoredApp(bundleIdentifier: app.bundleIdentifier.isEmpty ? app.name : app.bundleIdentifier)
