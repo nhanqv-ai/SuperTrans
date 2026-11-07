@@ -72,6 +72,7 @@ public struct SettingsView: View {
     @State private var didCopyGlossaryFeedback: Bool = false
     @State private var showingAPIKeyGuidePopover: Bool = false
     @State private var copiedAPIKeyFeedback: String? = nil
+    @State private var didCopyPromptFeedback: Bool = false
     @State private var newCustomPromptNameInput: String = ""
     @State private var selectedInspectorPromptId: String? = nil
     @FocusState private var isCustomPromptNameFocused: Bool
@@ -1083,6 +1084,24 @@ public struct SettingsView: View {
         }
     }
 
+    private func moveCustomPromptPreset(id: UUID, direction: Int) {
+        var s = storageManager.settings
+        guard let idx = s.customPromptPresets.firstIndex(where: { $0.id == id }) else { return }
+        let targetIdx = idx + direction
+        guard targetIdx >= 0 && targetIdx < s.customPromptPresets.count else { return }
+        s.customPromptPresets.swapAt(idx, targetIdx)
+        storageManager.settings = s
+    }
+
+    private func copyPromptToClipboard(_ text: String) {
+        NSPasteboard.general.clearContents()
+        NSPasteboard.general.setString(text, forType: .string)
+        didCopyPromptFeedback = true
+        DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) {
+            didCopyPromptFeedback = false
+        }
+    }
+
     private func toggleBuiltinPromptHidden(_ id: String) {
         var s = storageManager.settings
         let isCurrentlyHidden = s.isBuiltinPromptHidden(id)
@@ -1260,7 +1279,8 @@ public struct SettingsView: View {
                                 .padding(.horizontal, 6)
                                 .padding(.vertical, 6)
                         } else {
-                            ForEach(settings.customPromptPresets) { customPreset in
+                            let customCount = settings.customPromptPresets.count
+                            ForEach(Array(settings.customPromptPresets.enumerated()), id: \.element.id) { index, customPreset in
                                 let isHidden = customPreset.isHidden
                                 let isActive = (activeId == customPreset.id.uuidString)
                                 let isSelected = (inspectedId == customPreset.id.uuidString)
@@ -1268,7 +1288,7 @@ public struct SettingsView: View {
                                     ? (isVi ? "Prompt tuỳ chỉnh" : "Custom Prompt")
                                     : customPreset.name
 
-                                HStack(spacing: 4) {
+                                HStack(spacing: 3) {
                                     Button(action: {
                                         selectedInspectorPromptId = customPreset.id.uuidString
                                         if !isHidden {
@@ -1293,6 +1313,34 @@ public struct SettingsView: View {
                                         .contentShape(Rectangle())
                                     }
                                     .buttonStyle(.plain)
+
+                                    if customCount > 1 {
+                                        VStack(spacing: 1) {
+                                            Button(action: {
+                                                moveCustomPromptPreset(id: customPreset.id, direction: -1)
+                                            }) {
+                                                Image(systemName: "chevron.up")
+                                                    .font(.system(size: 7.5, weight: .bold))
+                                                    .foregroundColor(index == 0 ? .secondary.opacity(0.3) : .secondary)
+                                                    .frame(width: 12, height: 9)
+                                            }
+                                            .buttonStyle(.borderless)
+                                            .disabled(index == 0)
+                                            .help(isVi ? "Đưa lên trên" : "Move up")
+
+                                            Button(action: {
+                                                moveCustomPromptPreset(id: customPreset.id, direction: 1)
+                                            }) {
+                                                Image(systemName: "chevron.down")
+                                                    .font(.system(size: 7.5, weight: .bold))
+                                                    .foregroundColor(index == customCount - 1 ? .secondary.opacity(0.3) : .secondary)
+                                                    .frame(width: 12, height: 9)
+                                            }
+                                            .buttonStyle(.borderless)
+                                            .disabled(index == customCount - 1)
+                                            .help(isVi ? "Đưa xuống dưới" : "Move down")
+                                        }
+                                    }
 
                                     Button(action: {
                                         toggleCustomPromptHidden(customPreset.id)
@@ -1341,6 +1389,7 @@ public struct SettingsView: View {
                 // Right Column: Detail Inspector & Editor
                 VStack(alignment: .leading, spacing: 6) {
                     if let customPreset = settings.customPromptPresets.first(where: { $0.id.uuidString == inspectedId }) {
+                        let isCustomActive = (activeId == customPreset.id.uuidString)
                         HStack(spacing: 6) {
                             Text(isVi ? "Tên:" : "Name:")
                                 .font(.system(size: 11.5, weight: .semibold))
@@ -1365,7 +1414,20 @@ public struct SettingsView: View {
                             .font(.system(size: 11.5, weight: .medium))
                             .focused($isCustomPromptNameFocused)
 
-                            if customPreset.isHidden {
+                            if isCustomActive {
+                                HStack(spacing: 3) {
+                                    Circle()
+                                        .fill(Color.green)
+                                        .frame(width: 5, height: 5)
+                                    Text(isVi ? "Đang dùng" : "Active")
+                                        .font(.system(size: 10, weight: .semibold))
+                                        .foregroundColor(.green)
+                                }
+                                .padding(.horizontal, 6)
+                                .padding(.vertical, 2)
+                                .background(Color.green.opacity(0.12))
+                                .cornerRadius(4)
+                            } else if customPreset.isHidden {
                                 Button(action: {
                                     var s = storageManager.settings
                                     if let idx = s.customPromptPresets.firstIndex(where: { $0.id == customPreset.id }) {
@@ -1381,6 +1443,18 @@ public struct SettingsView: View {
                                 .buttonStyle(.borderedProminent)
                                 .controlSize(.small)
                             }
+
+                            Button(action: {
+                                let currentText = storageManager.settings.customPromptPresets.first(where: { $0.id == customPreset.id })?.prompt ?? customPreset.prompt
+                                copyPromptToClipboard(currentText)
+                            }) {
+                                Image(systemName: didCopyPromptFeedback ? "checkmark" : "doc.on.doc")
+                                    .font(.system(size: 10))
+                                    .foregroundColor(didCopyPromptFeedback ? .green : .secondary)
+                            }
+                            .buttonStyle(.bordered)
+                            .controlSize(.small)
+                            .help(isVi ? "Sao chép nội dung Prompt" : "Copy Prompt text")
                         }
 
                         TextEditor(text: Binding(
@@ -1409,6 +1483,7 @@ public struct SettingsView: View {
                         )
                     } else if let builtinPreset = AppSettings.promptPresets.first(where: { $0.id == inspectedId }) ?? AppSettings.promptPresets.first {
                         let isHidden = settings.isBuiltinPromptHidden(builtinPreset.id)
+                        let isBuiltinActive = (activeId == builtinPreset.id)
                         HStack(spacing: 6) {
                             Text(isVi ? builtinPreset.titleVi : builtinPreset.titleEn)
                                 .font(.system(size: 11.5, weight: .semibold))
@@ -1417,7 +1492,20 @@ public struct SettingsView: View {
 
                             Spacer()
 
-                            if isHidden {
+                            if isBuiltinActive {
+                                HStack(spacing: 3) {
+                                    Circle()
+                                        .fill(Color.green)
+                                        .frame(width: 5, height: 5)
+                                    Text(isVi ? "Đang dùng" : "Active")
+                                        .font(.system(size: 10, weight: .semibold))
+                                        .foregroundColor(.green)
+                                }
+                                .padding(.horizontal, 6)
+                                .padding(.vertical, 2)
+                                .background(Color.green.opacity(0.12))
+                                .cornerRadius(4)
+                            } else if isHidden {
                                 Button(action: {
                                     var s = storageManager.settings
                                     s.hiddenBuiltinPromptIds.removeAll { $0 == builtinPreset.id }
@@ -1433,11 +1521,22 @@ public struct SettingsView: View {
                             }
 
                             Button(action: {
+                                copyPromptToClipboard(builtinPreset.prompt)
+                            }) {
+                                Image(systemName: didCopyPromptFeedback ? "checkmark" : "doc.on.doc")
+                                    .font(.system(size: 10))
+                                    .foregroundColor(didCopyPromptFeedback ? .green : .secondary)
+                            }
+                            .buttonStyle(.bordered)
+                            .controlSize(.small)
+                            .help(isVi ? "Sao chép nội dung Prompt" : "Copy Prompt text")
+
+                            Button(action: {
                                 let baseTitle = (isVi ? builtinPreset.shortTitleVi : builtinPreset.shortTitleEn) + (isVi ? " (Bản sao)" : " (Copy)")
                                 createNewCustomPromptPreset(basePrompt: builtinPreset.prompt, baseName: baseTitle)
                             }) {
                                 HStack(spacing: 3) {
-                                    Image(systemName: "doc.on.doc")
+                                    Image(systemName: "plus.square.on.square")
                                         .font(.system(size: 9.5))
                                     Text(isVi ? "Tạo bản sao để sửa" : "Duplicate to Edit")
                                         .font(.system(size: 10.5))
@@ -2040,10 +2139,22 @@ public struct SettingsView: View {
     // MARK: - Tab 3: Ignored Apps (SuperClip Exact Layout)
 
     private var ignoredAppsTabContent: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            Text(loc.tr(.tabIgnoredApps))
-                .font(.system(size: 13, weight: .semibold))
-                .foregroundColor(.primary)
+        let ignoredCount = storageManager.settings.ignoredApps.count
+        let ignoredBids = Set(storageManager.settings.ignoredApps.map { $0.bundleIdentifier.lowercased() })
+        let selfBundleId = Bundle.main.bundleIdentifier?.lowercased() ?? "com.nhanqv.supertrans"
+
+        return VStack(alignment: .leading, spacing: 10) {
+            HStack(spacing: 6) {
+                Text(loc.tr(.tabIgnoredApps))
+                    .font(.system(size: 13, weight: .semibold))
+                    .foregroundColor(.primary)
+
+                Text(isVi ? "(\(ignoredCount) ứng dụng)" : "(\(ignoredCount) apps)")
+                    .font(.system(size: 11, design: .monospaced))
+                    .foregroundColor(.secondary)
+
+                Spacer()
+            }
 
             Text(loc.tr(.ignoredAppsDescription))
                 .font(.system(size: 11.5))
@@ -2092,6 +2203,7 @@ public struct SettingsView: View {
                 }
                 .buttonStyle(.bordered)
                 .controlSize(.small)
+                .help(isVi ? "Chọn ứng dụng từ thư mục Applications" : "Choose app from Applications folder")
 
                 Button(action: removeSelectedIgnoredApp) {
                     Image(systemName: "minus")
@@ -2100,16 +2212,24 @@ public struct SettingsView: View {
                 .buttonStyle(.bordered)
                 .controlSize(.small)
                 .disabled(selectedIgnoredAppId == nil)
+                .help(isVi ? "Bỏ chặn ứng dụng đang chọn" : "Remove selected ignored app")
 
                 Menu(loc.tr(.addRunningAppButton)) {
-                    let runningApps = NSWorkspace.shared.runningApplications.filter {
-                        $0.activationPolicy == .regular && $0.bundleIdentifier != nil
-                    }
+                    let runningApps = NSWorkspace.shared.runningApplications
+                        .filter {
+                            $0.activationPolicy == .regular &&
+                            $0.bundleIdentifier != nil &&
+                            $0.bundleIdentifier?.lowercased() != selfBundleId
+                        }
+                        .sorted { ($0.localizedName ?? "") < ($1.localizedName ?? "") }
+
                     ForEach(runningApps, id: \.processIdentifier) { app in
                         if let bid = app.bundleIdentifier, let name = app.localizedName {
-                            Button("\(name) (\(bid))") {
+                            let isAlreadyIgnored = ignoredBids.contains(bid.lowercased())
+                            Button(isAlreadyIgnored ? "\(name) (\(isVi ? "Đã thêm" : "Added"))" : "\(name) (\(bid))") {
                                 storageManager.addIgnoredApp(IgnoredApp(bundleIdentifier: bid, name: name, iconPath: app.bundleURL?.path))
                             }
+                            .disabled(isAlreadyIgnored)
                         }
                     }
                 }
@@ -2118,6 +2238,24 @@ public struct SettingsView: View {
                 .fixedSize()
 
                 Spacer()
+
+                if !storageManager.settings.ignoredApps.isEmpty {
+                    Button(action: {
+                        var s = storageManager.settings
+                        s.ignoredApps.removeAll()
+                        storageManager.settings = s
+                        selectedIgnoredAppId = nil
+                    }) {
+                        HStack(spacing: 3) {
+                            Image(systemName: "trash")
+                                .font(.system(size: 10))
+                            Text(isVi ? "Bỏ chặn tất cả" : "Clear All")
+                                .font(.system(size: 11))
+                        }
+                    }
+                    .buttonStyle(.bordered)
+                    .controlSize(.small)
+                }
             }
         }
         .padding(12)
@@ -2257,6 +2395,27 @@ public struct SettingsView: View {
                     }
                     .buttonStyle(.bordered)
                     .controlSize(.small)
+
+                    Spacer()
+
+                    Button(action: { showingResetConfirmation = true }) {
+                        HStack(spacing: 4) {
+                            Image(systemName: "arrow.counterclockwise")
+                            Text(isVi ? "Khôi phục cài đặt gốc" : "Reset Preferences")
+                        }
+                    }
+                    .buttonStyle(.bordered)
+                    .controlSize(.small)
+                    .confirmationDialog(
+                        isVi ? "Khôi phục các tuỳ chọn cài đặt về mặc định? (API Key, Dự án và Lịch sử dịch vẫn được giữ nguyên)" : "Reset preferences to default? (Your API Keys, Projects, and Translation History will be preserved)",
+                        isPresented: $showingResetConfirmation,
+                        titleVisibility: .visible
+                    ) {
+                        Button(isVi ? "Khôi phục cài đặt gốc" : "Reset Preferences", role: .destructive) {
+                            resetPreferencesPreservingUserData()
+                        }
+                        Button(isVi ? "Hủy" : "Cancel", role: .cancel) {}
+                    }
                 }
             }
             .padding(10)
@@ -2465,6 +2624,15 @@ public struct SettingsView: View {
         bcf.allowedUnits = [.useBytes, .useKB, .useMB]
         bcf.countStyle = .file
         return bcf.string(fromByteCount: totalBytes)
+    }
+
+    private func resetPreferencesPreservingUserData() {
+        let current = storageManager.settings
+        var fresh = AppSettings()
+        fresh.apiKeys = current.apiKeys
+        fresh.customPromptPresets = current.customPromptPresets
+        fresh.activeProjectId = current.activeProjectId
+        storageManager.settings = fresh
     }
 
     // MARK: - Footer Bar
