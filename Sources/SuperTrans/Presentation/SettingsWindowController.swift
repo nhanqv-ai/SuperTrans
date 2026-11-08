@@ -1,4 +1,5 @@
 import AppKit
+import Combine
 import SwiftUI
 import SuperTransCore
 
@@ -9,6 +10,7 @@ public final class SettingsWindowController: NSWindowController, NSWindowDelegat
     public let hotKeyManager: any HotKeyManaging
     public var onPresentationDismissalRequested: (() -> Void)?
     private var hasBeenCentered: Bool = false
+    private var languageCancellable: AnyCancellable?
 
     public init(
         storageManager: StorageManager,
@@ -25,7 +27,7 @@ public final class SettingsWindowController: NSWindowController, NSWindowDelegat
             backing: .buffered,
             defer: false
         )
-        window.title = "SuperTrans Settings"
+        window.title = "SuperTrans — " + LocalizationManager.shared.tr(.preferences)
         window.isReleasedWhenClosed = false
         window.level = .normal
         window.setContentSize(NSSize(width: 510, height: 500))
@@ -34,6 +36,12 @@ public final class SettingsWindowController: NSWindowController, NSWindowDelegat
         super.init(window: window)
         window.delegate = self
         setupContentView()
+
+        languageCancellable = LocalizationManager.shared.objectWillChange
+            .receive(on: DispatchQueue.main)
+            .sink { [weak self] _ in
+                self?.window?.title = "SuperTrans — " + LocalizationManager.shared.tr(.preferences)
+            }
     }
 
     @available(*, unavailable)
