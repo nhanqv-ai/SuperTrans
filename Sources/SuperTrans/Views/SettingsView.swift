@@ -89,6 +89,7 @@ public struct SettingsView: View {
     @State private var didCopyVersionInfoFeedback: Bool = false
     @State private var showingDeleteProjectConfirmation: Bool = false
     @State private var pendingDeleteCustomPromptId: UUID? = nil
+    @State private var backupStatusMessage: String? = nil
     @State private var newCustomPromptNameInput: String = ""
     @State private var selectedInspectorPromptId: String? = nil
     @FocusState private var isCustomPromptNameFocused: Bool
@@ -957,11 +958,28 @@ public struct SettingsView: View {
                 .buttonStyle(.plain)
 
                 Spacer()
+
+                Button(action: {
+                    pasteAndAddKeyFromClipboard()
+                    showingAPIKeyGuidePopover = false
+                }) {
+                    HStack(spacing: 4) {
+                        Image(systemName: "doc.on.clipboard")
+                            .font(.system(size: 10.5, weight: .semibold))
+                        Text(isVi ? "Dán & Thêm ngay" : "Paste & Add")
+                            .font(.system(size: 11, weight: .medium))
+                    }
+                    .padding(.horizontal, 9)
+                    .padding(.vertical, 6)
+                    .background(RoundedRectangle(cornerRadius: 6).fill(Color.secondary.opacity(0.14)))
+                    .foregroundColor(.primary)
+                }
+                .buttonStyle(.plain)
             }
             .padding(.top, 2)
         }
         .padding(14)
-        .frame(width: 360)
+        .frame(width: 390)
     }
 
     private func apiKeyRow(index: Int, key: String) -> some View {
@@ -3153,6 +3171,17 @@ public struct SettingsView: View {
 
                     Spacer()
 
+                    if let statusMsg = backupStatusMessage {
+                        HStack(spacing: 3) {
+                            Image(systemName: "checkmark.circle.fill")
+                                .font(.system(size: 10))
+                                .foregroundColor(.green)
+                            Text(statusMsg)
+                                .font(.system(size: 10.5, weight: .medium))
+                                .foregroundColor(.green)
+                        }
+                    }
+
                     Menu(isVi ? "Sao lưu & Khôi phục" : "Backup & Restore") {
                         Button(isVi ? "Xuất bản sao lưu cấu hình & dự án (.json)..." : "Export Settings & Projects Backup (.json)...") {
                             exportBackupPanel()
@@ -3460,6 +3489,7 @@ public struct SettingsView: View {
         enc.dateEncodingStrategy = .iso8601
         if let data = try? enc.encode(payload) {
             try? data.write(to: targetURL, options: .atomic)
+            showBackupStatus(isVi ? "Đã xuất sao lưu" : "Backup exported")
         }
     }
 
@@ -3479,9 +3509,20 @@ public struct SettingsView: View {
             storageManager.mergeOrRestoreProjects(payload.projects)
             storageManager.settings = payload.settings
             keyRefreshTrigger = UUID()
+            showBackupStatus(isVi ? "Đã khôi phục" : "Backup restored")
         } else if let settingsOnly = try? dec.decode(AppSettings.self, from: data) {
             storageManager.settings = settingsOnly
             keyRefreshTrigger = UUID()
+            showBackupStatus(isVi ? "Đã khôi phục" : "Backup restored")
+        }
+    }
+
+    private func showBackupStatus(_ message: String) {
+        backupStatusMessage = message
+        DispatchQueue.main.asyncAfter(deadline: .now() + 2.5) {
+            if backupStatusMessage == message {
+                backupStatusMessage = nil
+            }
         }
     }
 
@@ -3527,10 +3568,18 @@ public struct SettingsView: View {
                 .font(.system(size: 10.5))
                 .foregroundColor(.secondary.opacity(0.6))
 
-            Button(action: {
-                stopShortcutRecording()
-                selectedTab = .projects
-            }) {
+            Menu {
+                ForEach(storageManager.projects) { proj in
+                    Button(proj.id == storageManager.activeProject.id ? "✓ \(proj.name)" : proj.name) {
+                        storageManager.selectActiveProject(id: proj.id)
+                    }
+                }
+                Divider()
+                Button(isVi ? "Quản lý Dự án..." : "Manage Projects...") {
+                    stopShortcutRecording()
+                    selectedTab = .projects
+                }
+            } label: {
                 HStack(spacing: 3) {
                     Image(systemName: "folder")
                         .font(.system(size: 9.5))
@@ -3540,17 +3589,46 @@ public struct SettingsView: View {
                 }
                 .foregroundColor(.secondary)
             }
-            .buttonStyle(.plain)
-            .help(isVi ? "Dự án đang chọn — Bấm để mở tab Dự án" : "Active Project — Click to open Projects tab")
+            .menuStyle(.borderlessButton)
+            .fixedSize()
+            .help(isVi ? "Đổi nhanh Dự án đang chọn hoặc mở tab Dự án" : "Quickly switch Active Project or open Projects tab")
 
             Text("·")
                 .font(.system(size: 10.5))
                 .foregroundColor(.secondary.opacity(0.6))
 
-            Button(action: {
-                stopShortcutRecording()
-                selectedTab = .prompt
-            }) {
+            Menu {
+                let s = storageManager.settings
+                let activeId = s.resolvedActivePromptId
+                ForEach(s.visibleBuiltinPromptPresets) { preset in
+                    let title = isVi ? preset.shortTitleVi : preset.shortTitleEn
+                    Button(preset.id == activeId ? "✓ \(title)" : title) {
+                        var updated = storageManager.settings
+                        updated.selectedPromptId = preset.id
+                        updated.customSystemPrompt = preset.prompt
+                        storageManager.settings = updated
+                    }
+                }
+                if !s.visibleCustomPromptPresets.isEmpty {
+                    Divider()
+                    ForEach(s.visibleCustomPromptPresets) { custom in
+                        let title = custom.name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+                            ? (isVi ? "Prompt tuỳ chỉnh" : "Custom Prompt")
+                            : custom.name
+                        Button(custom.id.uuidString == activeId ? "✓ \(title)" : title) {
+                            var updated = storageManager.settings
+                            updated.selectedPromptId = custom.id.uuidString
+                            updated.customSystemPrompt = custom.prompt
+                            storageManager.settings = updated
+                        }
+                    }
+                }
+                Divider()
+                Button(isVi ? "Quản lý Prompt..." : "Manage Prompts...") {
+                    stopShortcutRecording()
+                    selectedTab = .prompt
+                }
+            } label: {
                 HStack(spacing: 3) {
                     Image(systemName: "text.bubble")
                         .font(.system(size: 9.5))
@@ -3560,15 +3638,15 @@ public struct SettingsView: View {
                 }
                 .foregroundColor(.secondary)
             }
-            .buttonStyle(.plain)
-            .help(isVi ? "Prompt đang dùng — Bấm để mở tab Prompt" : "Active Prompt — Click to open Prompt tab")
+            .menuStyle(.borderlessButton)
+            .fixedSize()
+            .help(isVi ? "Đổi nhanh Prompt đang dùng hoặc mở tab Prompt" : "Quickly switch Active Prompt or open Prompt tab")
 
             Spacer()
 
             Button(isVi ? "Xong" : "Done") {
                 onDismiss?()
             }
-            .keyboardShortcut(.defaultAction)
         }
         .padding(.horizontal, 16)
         .padding(.vertical, 6)
