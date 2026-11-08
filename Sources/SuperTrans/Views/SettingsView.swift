@@ -1820,24 +1820,44 @@ public struct SettingsView: View {
                                 .font(.system(size: 11.5, weight: .semibold))
                                 .foregroundColor(.secondary)
 
-                            TextField(
-                                isVi ? "Nhập tên Custom Prompt..." : "Enter Custom Prompt name...",
-                                text: Binding(
-                                    get: {
-                                        storageManager.settings.customPromptPresets.first(where: { $0.id == customPreset.id })?.name ?? customPreset.name
-                                    },
-                                    set: { newName in
+                            ZStack(alignment: .trailing) {
+                                TextField(
+                                    isVi ? "Nhập tên Custom Prompt..." : "Enter Custom Prompt name...",
+                                    text: Binding(
+                                        get: {
+                                            storageManager.settings.customPromptPresets.first(where: { $0.id == customPreset.id })?.name ?? customPreset.name
+                                        },
+                                        set: { newName in
+                                            var s = storageManager.settings
+                                            if let idx = s.customPromptPresets.firstIndex(where: { $0.id == customPreset.id }) {
+                                                s.customPromptPresets[idx].name = newName
+                                                storageManager.settings = s
+                                            }
+                                        }
+                                    )
+                                )
+                                .textFieldStyle(.roundedBorder)
+                                .font(.system(size: 11.5, weight: .medium))
+                                .focused($isCustomPromptNameFocused)
+
+                                let currentCustomName = storageManager.settings.customPromptPresets.first(where: { $0.id == customPreset.id })?.name ?? customPreset.name
+                                if !currentCustomName.isEmpty {
+                                    Button(action: {
                                         var s = storageManager.settings
                                         if let idx = s.customPromptPresets.firstIndex(where: { $0.id == customPreset.id }) {
-                                            s.customPromptPresets[idx].name = newName
+                                            s.customPromptPresets[idx].name = ""
                                             storageManager.settings = s
                                         }
+                                    }) {
+                                        Image(systemName: "xmark.circle.fill")
+                                            .font(.system(size: 10.5))
+                                            .foregroundColor(.secondary)
                                     }
-                                )
-                            )
-                            .textFieldStyle(.roundedBorder)
-                            .font(.system(size: 11.5, weight: .medium))
-                            .focused($isCustomPromptNameFocused)
+                                    .buttonStyle(.plain)
+                                    .padding(.trailing, 6)
+                                    .help(isVi ? "Xoá tên Custom Prompt" : "Clear Custom Prompt name")
+                                }
+                            }
 
                             if isCustomActive {
                                 HStack(spacing: 3) {
@@ -2014,6 +2034,18 @@ public struct SettingsView: View {
                                 .buttonStyle(.bordered)
                                 .controlSize(.mini)
                                 .help(isVi ? "Chèn biến ngôn ngữ đích (SuperTrans sẽ tự thay bằng ngôn ngữ đích đang chọn)" : "Insert target language placeholder (automatically replaced with the active target language)")
+
+                                if charCount > 0 {
+                                    Button(action: {
+                                        applyCustomPromptTemplate(id: customPreset.id, template: "")
+                                    }) {
+                                        Image(systemName: "xmark.circle")
+                                            .font(.system(size: 9.5))
+                                    }
+                                    .buttonStyle(.bordered)
+                                    .controlSize(.mini)
+                                    .help(isVi ? "Xoá trắng nội dung Custom Prompt" : "Clear Custom Prompt text")
+                                }
 
                                 Spacer()
 
@@ -2437,6 +2469,24 @@ public struct SettingsView: View {
                     .controlSize(.mini)
                     .help(isVi ? "Dán nhiều cặp thuật ngữ từ Clipboard (mỗi dòng dạng: từ_gốc -> nghĩa_đích hoặc phân tách bằng Tab)" : "Paste multiple glossary pairs from Clipboard (one per line: source -> target or Tab-separated)")
 
+                    Menu {
+                        Button(isVi ? "Nhập từ điển từ tệp (.tsv / .csv / .txt)..." : "Import Glossary from File (.tsv / .csv / .txt)...") {
+                            importGlossaryFromFilePanel()
+                        }
+                        if !activeProj.glossary.isEmpty {
+                            Button(isVi ? "Xuất từ điển ra tệp (.tsv)..." : "Export Glossary to File (.tsv)...") {
+                                exportGlossaryToFilePanel()
+                            }
+                        }
+                    } label: {
+                        Image(systemName: "square.and.arrow.up.on.square")
+                            .font(.system(size: 9.5))
+                    }
+                    .menuStyle(.borderedButton)
+                    .controlSize(.mini)
+                    .fixedSize()
+                    .help(isVi ? "Nhập hoặc xuất từ điển thuật ngữ bằng tệp (.tsv / .csv / .txt)" : "Import or export glossary file (.tsv / .csv / .txt)")
+
                     if !activeProj.glossary.isEmpty {
                         Button(action: copyGlossaryToClipboard) {
                             HStack(spacing: 3) {
@@ -2750,9 +2800,13 @@ public struct SettingsView: View {
 
     private func pasteBulkGlossaryFromClipboard() {
         guard let raw = NSPasteboard.general.string(forType: .string) else { return }
+        importGlossaryRawString(raw)
+    }
+
+    private func importGlossaryRawString(_ raw: String) {
         let lines = raw.components(separatedBy: .newlines)
         let projId = storageManager.activeProject.id
-        let separators = ["->", "=>", "\t", " = ", " : "]
+        let separators = ["->", "=>", "\t", " = ", " : ", ","]
         for line in lines {
             let trimmedLine = line.trimmingCharacters(in: .whitespacesAndNewlines)
             guard !trimmedLine.isEmpty else { continue }
@@ -2767,6 +2821,31 @@ public struct SettingsView: View {
                 }
             }
         }
+    }
+
+    private func importGlossaryFromFilePanel() {
+        NSApp.activate(ignoringOtherApps: true)
+        let panel = NSOpenPanel()
+        panel.allowedContentTypes = [.plainText, .tabSeparatedText, .commaSeparatedText]
+        panel.allowsMultipleSelection = false
+        panel.canChooseDirectories = false
+        panel.canChooseFiles = true
+        guard panel.runModal() == .OK, let url = panel.url,
+              let content = try? String(contentsOf: url, encoding: .utf8) else { return }
+        importGlossaryRawString(content)
+    }
+
+    private func exportGlossaryToFilePanel() {
+        let proj = storageManager.activeProject
+        guard !proj.glossary.isEmpty else { return }
+        NSApp.activate(ignoringOtherApps: true)
+        let panel = NSSavePanel()
+        panel.allowedContentTypes = [.tabSeparatedText, .plainText]
+        panel.nameFieldStringValue = "SuperTrans-Glossary-\(proj.name).tsv"
+        panel.canCreateDirectories = true
+        guard panel.runModal() == .OK, let url = panel.url else { return }
+        let formatted = proj.glossary.map { "\($0.sourceTerm)\t\($0.targetTerm)" }.joined(separator: "\n")
+        try? formatted.write(to: url, atomically: true, encoding: .utf8)
     }
 
     private func copyGlossaryToClipboard() {
@@ -3512,17 +3591,20 @@ public struct SettingsView: View {
                 .background(Color(nsColor: .controlBackgroundColor).opacity(0.5))
                 .cornerRadius(6)
 
+                let unpinnedCount = storageManager.items.filter { !$0.isPinned }.count
+
                 HStack(spacing: 10) {
                     Button(action: { showingClearConfirmation = true }) {
                         HStack(spacing: 4) {
                             Image(systemName: "trash")
-                            Text(loc.tr(.clearUnpinnedHistory))
+                            Text(unpinnedCount > 0 ? "\(loc.tr(.clearUnpinnedHistory)) (\(unpinnedCount))" : loc.tr(.clearUnpinnedHistory))
                         }
                     }
                     .buttonStyle(.bordered)
                     .controlSize(.small)
+                    .disabled(unpinnedCount == 0)
                     .confirmationDialog(
-                        isVi ? "Xóa toàn bộ lịch sử chưa ghim?" : "Clear all unpinned history?",
+                        isVi ? "Xóa toàn bộ \(unpinnedCount) lịch sử chưa ghim?" : "Clear all \(unpinnedCount) unpinned history items?",
                         isPresented: $showingClearConfirmation,
                         titleVisibility: .visible
                     ) {
