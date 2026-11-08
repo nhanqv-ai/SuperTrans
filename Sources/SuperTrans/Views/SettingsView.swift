@@ -92,6 +92,7 @@ public struct SettingsView: View {
     @State private var backupStatusMessage: String? = nil
     @State private var copiedPopoverItemId: UUID? = nil
     @State private var didCopyAllPopoverItemsFeedback: Bool = false
+    @State private var isDropTargetedIgnoredApps: Bool = false
     @State private var pendingDeleteAPIKey: String? = nil
     @State private var newCustomPromptNameInput: String = ""
     @State private var selectedInspectorPromptId: String? = nil
@@ -295,6 +296,20 @@ public struct SettingsView: View {
                     .labelsHidden()
                     .pickerStyle(.menu)
                     .frame(width: 210)
+
+                    if storageManager.settings.language != "system" {
+                        Button(action: {
+                            var s = storageManager.settings
+                            s.language = "system"
+                            storageManager.settings = s
+                        }) {
+                            Image(systemName: "arrow.counterclockwise")
+                                .font(.system(size: 10))
+                        }
+                        .buttonStyle(.bordered)
+                        .controlSize(.small)
+                        .help(isVi ? "Đặt lại về mặc định hệ thống (System Default)" : "Reset to System Default")
+                    }
                 }
 
                 HStack(spacing: 8) {
@@ -546,10 +561,42 @@ public struct SettingsView: View {
     }
 
     private var shortcutsCard: some View {
-        VStack(alignment: .leading, spacing: 6) {
-            Text(loc.tr(.tabShortcuts))
-                .font(.system(size: 12.5, weight: .semibold))
-                .foregroundColor(.primary)
+        let hasCustomShortcut =
+            storageManager.settings.translateHotKeyKeyCode != AppSettings.defaultTranslateHotKeyKeyCode ||
+            storageManager.settings.translateHotKeyModifiers != AppSettings.defaultTranslateHotKeyModifiers ||
+            storageManager.settings.historyHotKeyKeyCode != AppSettings.defaultHistoryHotKeyKeyCode ||
+            storageManager.settings.historyHotKeyModifiers != AppSettings.defaultHistoryHotKeyModifiers
+
+        return VStack(alignment: .leading, spacing: 6) {
+            HStack {
+                Text(loc.tr(.tabShortcuts))
+                    .font(.system(size: 12.5, weight: .semibold))
+                    .foregroundColor(.primary)
+
+                Spacer()
+
+                if hasCustomShortcut {
+                    Button(action: {
+                        stopShortcutRecording()
+                        var s = storageManager.settings
+                        s.translateHotKeyKeyCode = AppSettings.defaultTranslateHotKeyKeyCode
+                        s.translateHotKeyModifiers = AppSettings.defaultTranslateHotKeyModifiers
+                        s.historyHotKeyKeyCode = AppSettings.defaultHistoryHotKeyKeyCode
+                        s.historyHotKeyModifiers = AppSettings.defaultHistoryHotKeyModifiers
+                        storageManager.settings = s
+                    }) {
+                        HStack(spacing: 3) {
+                            Image(systemName: "arrow.counterclockwise")
+                                .font(.system(size: 9.5))
+                            Text(isVi ? "Đặt lại mặc định" : "Reset All")
+                                .font(.system(size: 10.5))
+                        }
+                    }
+                    .buttonStyle(.bordered)
+                    .controlSize(.mini)
+                    .help(loc.tr(.resetDefaultShortcutButton))
+                }
+            }
 
             // Row 1: Translate Shortcut
             HStack(spacing: 8) {
@@ -3261,6 +3308,10 @@ public struct SettingsView: View {
                                 .font(.system(size: 12, weight: .medium))
                                 .foregroundColor(.secondary)
 
+                            Text(isVi ? "Kéo thả ứng dụng (.app) từ Finder vào đây hoặc chọn bên dưới" : "Drag & drop .app bundles from Finder here or choose below")
+                                .font(.system(size: 10.5))
+                                .foregroundColor(.secondary.opacity(0.8))
+
                             Button(action: {
                                 let presets: [(name: String, bid: String)] = [
                                     ("Keychain Access", "com.apple.keychainaccess"),
@@ -3289,8 +3340,9 @@ public struct SettingsView: View {
                     )
                     .overlay(
                         RoundedRectangle(cornerRadius: 6, style: .continuous)
-                            .stroke(Color(nsColor: .separatorColor), lineWidth: 0.8)
+                            .stroke(isDropTargetedIgnoredApps ? Color.accentColor : Color(nsColor: .separatorColor), lineWidth: isDropTargetedIgnoredApps ? 1.8 : 0.8)
                     )
+                    .onDrop(of: [.fileURL], isTargeted: $isDropTargetedIgnoredApps, perform: handleDroppedAppProviders)
             } else {
                 ScrollView {
                     LazyVStack(spacing: 2) {
@@ -3305,8 +3357,9 @@ public struct SettingsView: View {
                 .cornerRadius(6)
                 .overlay(
                     RoundedRectangle(cornerRadius: 6, style: .continuous)
-                        .stroke(Color(nsColor: .separatorColor), lineWidth: 0.8)
+                        .stroke(isDropTargetedIgnoredApps ? Color.accentColor : Color(nsColor: .separatorColor), lineWidth: isDropTargetedIgnoredApps ? 1.8 : 0.8)
                 )
+                .onDrop(of: [.fileURL], isTargeted: $isDropTargetedIgnoredApps, perform: handleDroppedAppProviders)
             }
 
             HStack(spacing: 8) {
@@ -3386,6 +3439,23 @@ public struct SettingsView: View {
                 .help(isVi ? "Thêm nhanh các trình quản lý mật khẩu và Terminal phổ biến vào danh sách bỏ qua" : "Quickly add common password managers and terminals to the ignored list")
 
                 Spacer()
+
+                if storageManager.settings.ignoredApps.count > 1 {
+                    Button(action: {
+                        var s = storageManager.settings
+                        s.ignoredApps.sort {
+                            ($0.name.isEmpty ? $0.bundleIdentifier : $0.name)
+                                .localizedCaseInsensitiveCompare($1.name.isEmpty ? $1.bundleIdentifier : $1.name) == .orderedAscending
+                        }
+                        storageManager.settings = s
+                    }) {
+                        Image(systemName: "arrow.up.arrow.down")
+                            .font(.system(size: 10))
+                    }
+                    .buttonStyle(.bordered)
+                    .controlSize(.small)
+                    .help(isVi ? "Sắp xếp danh sách ứng dụng theo thứ tự A–Z" : "Sort ignored apps alphabetically (A–Z)")
+                }
 
                 if !storageManager.settings.ignoredApps.isEmpty {
                     Button(action: {
@@ -3564,6 +3634,33 @@ public struct SettingsView: View {
         }
     }
 
+    private func handleDroppedAppProviders(_ providers: [NSItemProvider]) -> Bool {
+        let selfBundleId = Bundle.main.bundleIdentifier?.lowercased() ?? "com.nhanqv.supertrans"
+        var handled = false
+        for provider in providers where provider.hasItemConformingToTypeIdentifier(UTType.fileURL.identifier) {
+            handled = true
+            provider.loadItem(forTypeIdentifier: UTType.fileURL.identifier, options: nil) { item, _ in
+                let fileURL: URL?
+                if let data = item as? Data {
+                    fileURL = URL(dataRepresentation: data, relativeTo: nil)
+                } else if let url = item as? URL {
+                    fileURL = url
+                } else {
+                    fileURL = nil
+                }
+                guard let url = fileURL, url.pathExtension.lowercased() == "app" else { return }
+                DispatchQueue.main.async {
+                    let bundle = Bundle(url: url)
+                    let bid = bundle?.bundleIdentifier ?? url.deletingPathExtension().lastPathComponent
+                    guard bid.lowercased() != selfBundleId else { return }
+                    let name = FileManager.default.displayName(atPath: url.path)
+                    storageManager.addIgnoredApp(IgnoredApp(bundleIdentifier: bid, name: name, iconPath: url.path))
+                }
+            }
+        }
+        return handled
+    }
+
     private func removeSelectedIgnoredApp() {
         guard let id = selectedIgnoredAppId else { return }
         if let match = storageManager.settings.ignoredApps.first(where: { $0.id == id }) {
@@ -3583,9 +3680,29 @@ public struct SettingsView: View {
 
                 VStack(spacing: 5) {
                     metricRow(label: isVi ? "Tổng số bản dịch đang lưu" : "Total Stored Translations", value: "\(storageManager.items.count)")
-                    metricRow(label: isVi ? "Bản dịch đã ghim / Mẫu chuẩn đã dạy" : "Pinned / Verified Examples", value: "\(storageManager.items.filter { $0.isPinned }.count) / \(storageManager.items.filter { $0.isVerified }.count)")
-                    metricRow(label: isVi ? "Số Dự án & Thuật ngữ từ điển" : "Projects & Glossary Terms", value: "\(storageManager.projects.count) \(isVi ? "dự án" : "projects") · \(storageManager.projects.reduce(0) { $0 + $1.glossary.count }) \(isVi ? "từ" : "terms")")
-                    metricRow(label: isVi ? "Dung lượng sử dụng" : "Disk Space Used", value: calculateDiskUsageFormatted())
+                    metricRow(
+                        label: isVi ? "Bản dịch đã ghim / Mẫu chuẩn đã dạy" : "Pinned / Verified Examples",
+                        value: "\(storageManager.items.filter { $0.isPinned }.count) / \(storageManager.items.filter { $0.isVerified }.count)",
+                        onTap: {
+                            stopShortcutRecording()
+                            selectedTab = .projects
+                        }
+                    )
+                    metricRow(
+                        label: isVi ? "Số Dự án & Thuật ngữ từ điển" : "Projects & Glossary Terms",
+                        value: "\(storageManager.projects.count) \(isVi ? "dự án" : "projects") · \(storageManager.projects.reduce(0) { $0 + $1.glossary.count }) \(isVi ? "từ" : "terms")",
+                        onTap: {
+                            stopShortcutRecording()
+                            selectedTab = .projects
+                        }
+                    )
+                    metricRow(
+                        label: isVi ? "Dung lượng sử dụng" : "Disk Space Used",
+                        value: calculateDiskUsageFormatted(),
+                        onTap: {
+                            NSWorkspace.shared.selectFile(nil, inFileViewerRootedAtPath: storageManager.baseDirectory.path)
+                        }
+                    )
                 }
                 .padding(8)
                 .background(Color(nsColor: .controlBackgroundColor).opacity(0.5))
@@ -3875,15 +3992,32 @@ public struct SettingsView: View {
         }
     }
 
-    private func metricRow(label: String, value: String) -> some View {
-        HStack {
-            Text(label)
-                .font(.system(size: 11.5))
-                .foregroundColor(.secondary)
-            Spacer()
-            Text(value)
-                .font(.system(size: 11.5, weight: .semibold, design: .monospaced))
-                .foregroundColor(.primary)
+    @ViewBuilder
+    private func metricRow(label: String, value: String, onTap: (() -> Void)? = nil) -> some View {
+        if let onTap = onTap {
+            Button(action: onTap) {
+                HStack {
+                    Text(label)
+                        .font(.system(size: 11.5))
+                        .foregroundColor(.secondary)
+                    Spacer()
+                    Text(value)
+                        .font(.system(size: 11.5, weight: .semibold, design: .monospaced))
+                        .foregroundColor(.accentColor)
+                }
+                .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+        } else {
+            HStack {
+                Text(label)
+                    .font(.system(size: 11.5))
+                    .foregroundColor(.secondary)
+                Spacer()
+                Text(value)
+                    .font(.system(size: 11.5, weight: .semibold, design: .monospaced))
+                    .foregroundColor(.primary)
+            }
         }
     }
 
