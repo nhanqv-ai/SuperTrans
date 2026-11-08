@@ -90,6 +90,7 @@ public struct SettingsView: View {
     @State private var showingDeleteProjectConfirmation: Bool = false
     @State private var pendingDeleteCustomPromptId: UUID? = nil
     @State private var backupStatusMessage: String? = nil
+    @State private var copiedPopoverItemId: UUID? = nil
     @State private var newCustomPromptNameInput: String = ""
     @State private var selectedInspectorPromptId: String? = nil
     @FocusState private var isCustomPromptNameFocused: Bool
@@ -487,6 +488,15 @@ public struct SettingsView: View {
                     if !isAccessibilityTrusted {
                         Button(isVi ? "Kiểm tra lại" : "Recheck") {
                             isAccessibilityTrusted = autoPasteService.checkAccessibilityPermission()
+                        }
+                        .buttonStyle(.bordered)
+                        .controlSize(.small)
+                        .font(.system(size: 10.5))
+
+                        Button(isVi ? "Mở Cài đặt Hệ thống" : "System Settings") {
+                            if let url = URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_Accessibility") {
+                                NSWorkspace.shared.open(url)
+                            }
                         }
                         .buttonStyle(.bordered)
                         .controlSize(.small)
@@ -2612,10 +2622,16 @@ public struct SettingsView: View {
                                 Button(action: {
                                     NSPasteboard.general.clearContents()
                                     NSPasteboard.general.setString(item.translatedText, forType: .string)
+                                    copiedPopoverItemId = item.id
+                                    DispatchQueue.main.asyncAfter(deadline: .now() + 1.2) {
+                                        if copiedPopoverItemId == item.id {
+                                            copiedPopoverItemId = nil
+                                        }
+                                    }
                                 }) {
-                                    Image(systemName: "doc.on.doc")
+                                    Image(systemName: copiedPopoverItemId == item.id ? "checkmark" : "doc.on.doc")
                                         .font(.system(size: 10.5))
-                                        .foregroundColor(.secondary)
+                                        .foregroundColor(copiedPopoverItemId == item.id ? .green : .secondary)
                                         .frame(width: 20, height: 20)
                                 }
                                 .buttonStyle(.borderless)
@@ -2659,6 +2675,20 @@ public struct SettingsView: View {
                 Text("(\(pinnedItems.count))")
                     .font(.system(size: 11, design: .monospaced))
                     .foregroundColor(.secondary)
+
+                if pinnedItems.count > 1 {
+                    Button(action: {
+                        for item in pinnedItems where item.isPinned {
+                            storageManager.togglePin(id: item.id)
+                        }
+                    }) {
+                        Text(isVi ? "Bỏ ghim tất cả" : "Unpin All")
+                            .font(.system(size: 10))
+                    }
+                    .buttonStyle(.bordered)
+                    .controlSize(.mini)
+                    .help(isVi ? "Bỏ ghim toàn bộ các câu dịch trong dự án này" : "Unpin all translations in this project")
+                }
             }
 
             if pinnedItems.isEmpty {
@@ -2691,10 +2721,16 @@ public struct SettingsView: View {
                                 Button(action: {
                                     NSPasteboard.general.clearContents()
                                     NSPasteboard.general.setString(item.translatedText, forType: .string)
+                                    copiedPopoverItemId = item.id
+                                    DispatchQueue.main.asyncAfter(deadline: .now() + 1.2) {
+                                        if copiedPopoverItemId == item.id {
+                                            copiedPopoverItemId = nil
+                                        }
+                                    }
                                 }) {
-                                    Image(systemName: "doc.on.doc")
+                                    Image(systemName: copiedPopoverItemId == item.id ? "checkmark" : "doc.on.doc")
                                         .font(.system(size: 10.5))
-                                        .foregroundColor(.secondary)
+                                        .foregroundColor(copiedPopoverItemId == item.id ? .green : .secondary)
                                         .frame(width: 20, height: 20)
                                 }
                                 .buttonStyle(.borderless)
