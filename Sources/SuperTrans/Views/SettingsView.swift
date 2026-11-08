@@ -91,6 +91,7 @@ public struct SettingsView: View {
     @State private var pendingDeleteCustomPromptId: UUID? = nil
     @State private var backupStatusMessage: String? = nil
     @State private var copiedPopoverItemId: UUID? = nil
+    @State private var didCopyAllPopoverItemsFeedback: Bool = false
     @State private var pendingDeleteAPIKey: String? = nil
     @State private var newCustomPromptNameInput: String = ""
     @State private var selectedInspectorPromptId: String? = nil
@@ -145,6 +146,11 @@ public struct SettingsView: View {
 
     private var topTabBar: some View {
         let missingAPIKey = storageManager.settings.validAPIKeys.isEmpty
+        let hasUpdateBadge: Bool = {
+            if case .updateAvailable = updateManager.status { return true }
+            if case .readyToRestart = updateManager.status { return true }
+            return false
+        }()
         return HStack(spacing: 8) {
             ForEach(SettingsTab.allCases) { tab in
                 Button(action: {
@@ -160,6 +166,11 @@ public struct SettingsView: View {
                             if tab == .geminiAI && missingAPIKey {
                                 Circle()
                                     .fill(Color.orange)
+                                    .frame(width: 6, height: 6)
+                                    .offset(x: 3, y: 1)
+                            } else if tab == .about && hasUpdateBadge {
+                                Circle()
+                                    .fill(Color.accentColor)
                                     .frame(width: 6, height: 6)
                                     .offset(x: 3, y: 1)
                             }
@@ -328,6 +339,20 @@ public struct SettingsView: View {
                     .menuStyle(.borderedButton)
                     .controlSize(.small)
                     .fixedSize()
+
+                    if storageManager.settings.capacity != 100 {
+                        Button(action: {
+                            var s = storageManager.settings
+                            s.capacity = 100
+                            storageManager.settings = s
+                        }) {
+                            Image(systemName: "arrow.counterclockwise")
+                                .font(.system(size: 10))
+                        }
+                        .buttonStyle(.bordered)
+                        .controlSize(.small)
+                        .help(isVi ? "Đặt lại về 100 bản dịch (Mặc định)" : "Reset to 100 items (Default)")
+                    }
                 }
 
                 HStack(spacing: 8) {
@@ -1895,6 +1920,18 @@ public struct SettingsView: View {
                                 .controlSize(.mini)
                                 .help(isVi ? "Dán nội dung Prompt từ Clipboard" : "Paste Prompt content from Clipboard")
 
+                                Button(action: {
+                                    let currentPrompt = storageManager.settings.customPromptPresets.first(where: { $0.id == customPreset.id })?.prompt ?? customPreset.prompt
+                                    let separator = (currentPrompt.isEmpty || currentPrompt.hasSuffix(" ") || currentPrompt.hasSuffix("\n")) ? "" : " "
+                                    applyCustomPromptTemplate(id: customPreset.id, template: currentPrompt + separator + "{{TARGET_LANGUAGE}}")
+                                }) {
+                                    Text("+ {{TARGET_LANGUAGE}}")
+                                        .font(.system(size: 9, weight: .medium, design: .monospaced))
+                                }
+                                .buttonStyle(.bordered)
+                                .controlSize(.mini)
+                                .help(isVi ? "Chèn biến ngôn ngữ đích (SuperTrans sẽ tự thay bằng ngôn ngữ đích đang chọn)" : "Insert target language placeholder (automatically replaced with the active target language)")
+
                                 Spacer()
 
                                 Text(isVi ? "\(charCount) ký tự" : "\(charCount) chars")
@@ -2232,19 +2269,34 @@ public struct SettingsView: View {
                 }
 
                 HStack(spacing: 6) {
-                    TextField(
-                        isVi ? "Ghi chú chuyên ngành / văn phong cho dự án này (VD: Tài liệu y khoa, giữ nguyên tên thuốc)..." : "Domain / style guidelines for this project...",
-                        text: Binding<String>(
-                            get: { activeProj.domainNote },
-                            set: { newNote in
-                                var updated = activeProj
-                                updated.domainNote = newNote
-                                storageManager.updateProject(updated)
-                            }
+                    ZStack(alignment: .trailing) {
+                        TextField(
+                            isVi ? "Ghi chú chuyên ngành / văn phong cho dự án này (VD: Tài liệu y khoa, giữ nguyên tên thuốc)..." : "Domain / style guidelines for this project...",
+                            text: Binding<String>(
+                                get: { activeProj.domainNote },
+                                set: { newNote in
+                                    var updated = activeProj
+                                    updated.domainNote = newNote
+                                    storageManager.updateProject(updated)
+                                }
+                            )
                         )
-                    )
-                    .textFieldStyle(.roundedBorder)
-                    .font(.system(size: 11))
+                        .textFieldStyle(.roundedBorder)
+                        .font(.system(size: 11))
+
+                        if !activeProj.domainNote.isEmpty {
+                            Button(action: {
+                                applyDomainNoteTemplate("")
+                            }) {
+                                Image(systemName: "xmark.circle.fill")
+                                    .font(.system(size: 10.5))
+                                    .foregroundColor(.secondary)
+                            }
+                            .buttonStyle(.plain)
+                            .padding(.trailing, 6)
+                            .help(isVi ? "Xoá ghi chú ngữ cảnh" : "Clear domain note")
+                        }
+                    }
 
                     Menu(isVi ? "Mẫu gợi ý" : "Templates") {
                         Button(isVi ? "IT / Phần mềm (Giữ nguyên tên biến, API, thuật ngữ kỹ thuật)" : "IT / Software (Keep code, APIs, technical terms)") {
@@ -2641,6 +2693,33 @@ public struct SettingsView: View {
                     .font(.system(size: 11, design: .monospaced))
                     .foregroundColor(.secondary)
 
+                if !verifiedItems.isEmpty {
+                    Button(action: {
+                        let exported = verifiedItems.map { item in
+                            if let src = item.sourceText, !src.isEmpty {
+                                return "\(src)\t\(item.translatedText)"
+                            }
+                            return item.translatedText
+                        }.joined(separator: "\n")
+                        NSPasteboard.general.clearContents()
+                        NSPasteboard.general.setString(exported, forType: .string)
+                        didCopyAllPopoverItemsFeedback = true
+                        DispatchQueue.main.asyncAfter(deadline: .now() + 1.4) {
+                            didCopyAllPopoverItemsFeedback = false
+                        }
+                    }) {
+                        HStack(spacing: 3) {
+                            Image(systemName: didCopyAllPopoverItemsFeedback ? "checkmark" : "doc.on.doc")
+                                .font(.system(size: 9))
+                            Text(didCopyAllPopoverItemsFeedback ? (isVi ? "Đã chép" : "Copied") : (isVi ? "Chép tất cả" : "Copy All"))
+                                .font(.system(size: 10))
+                        }
+                    }
+                    .buttonStyle(.bordered)
+                    .controlSize(.mini)
+                    .help(isVi ? "Sao chép toàn bộ câu mẫu chuẩn của dự án vào Clipboard" : "Copy all verified examples in this project to Clipboard")
+                }
+
                 if verifiedItems.count > 1 {
                     Button(action: {
                         for item in verifiedItems {
@@ -2739,6 +2818,33 @@ public struct SettingsView: View {
                 Text("(\(pinnedItems.count))")
                     .font(.system(size: 11, design: .monospaced))
                     .foregroundColor(.secondary)
+
+                if !pinnedItems.isEmpty {
+                    Button(action: {
+                        let exported = pinnedItems.map { item in
+                            if let src = item.sourceText, !src.isEmpty {
+                                return "\(src)\t\(item.translatedText)"
+                            }
+                            return item.translatedText
+                        }.joined(separator: "\n")
+                        NSPasteboard.general.clearContents()
+                        NSPasteboard.general.setString(exported, forType: .string)
+                        didCopyAllPopoverItemsFeedback = true
+                        DispatchQueue.main.asyncAfter(deadline: .now() + 1.4) {
+                            didCopyAllPopoverItemsFeedback = false
+                        }
+                    }) {
+                        HStack(spacing: 3) {
+                            Image(systemName: didCopyAllPopoverItemsFeedback ? "checkmark" : "doc.on.doc")
+                                .font(.system(size: 9))
+                            Text(didCopyAllPopoverItemsFeedback ? (isVi ? "Đã chép" : "Copied") : (isVi ? "Chép tất cả" : "Copy All"))
+                                .font(.system(size: 10))
+                        }
+                    }
+                    .buttonStyle(.bordered)
+                    .controlSize(.mini)
+                    .help(isVi ? "Sao chép toàn bộ bản dịch đã ghim của dự án vào Clipboard" : "Copy all pinned translations in this project to Clipboard")
+                }
 
                 if pinnedItems.count > 1 {
                     Button(action: {
