@@ -91,6 +91,7 @@ public struct SettingsView: View {
     @State private var pendingDeleteCustomPromptId: UUID? = nil
     @State private var backupStatusMessage: String? = nil
     @State private var copiedPopoverItemId: UUID? = nil
+    @State private var pendingDeleteAPIKey: String? = nil
     @State private var newCustomPromptNameInput: String = ""
     @State private var selectedInspectorPromptId: String? = nil
     @FocusState private var isCustomPromptNameFocused: Bool
@@ -770,13 +771,42 @@ public struct SettingsView: View {
                     .fill(Color(nsColor: .textBackgroundColor))
                     .frame(height: 150)
                     .overlay(
-                        VStack(spacing: 4) {
+                        VStack(spacing: 8) {
                             Image(systemName: "key")
                                 .font(.system(size: 18))
                                 .foregroundColor(.secondary)
                             Text(loc.tr(.noAPIKeysConfigured))
                                 .font(.system(size: 11))
                                 .foregroundColor(.secondary)
+
+                            HStack(spacing: 8) {
+                                Button(action: pasteAndAddKeyFromClipboard) {
+                                    HStack(spacing: 4) {
+                                        Image(systemName: "doc.on.clipboard")
+                                            .font(.system(size: 10))
+                                        Text(isVi ? "Dán Key từ Clipboard" : "Paste from Clipboard")
+                                            .font(.system(size: 11, weight: .medium))
+                                    }
+                                }
+                                .buttonStyle(.borderedProminent)
+                                .controlSize(.small)
+
+                                Button(action: {
+                                    if let url = URL(string: "https://aistudio.google.com/app/apikey") {
+                                        NSWorkspace.shared.open(url)
+                                    }
+                                }) {
+                                    HStack(spacing: 4) {
+                                        Image(systemName: "safari")
+                                            .font(.system(size: 10))
+                                        Text(isVi ? "Lấy Key miễn phí (AI Studio)" : "Get Free Key (AI Studio)")
+                                            .font(.system(size: 11, weight: .medium))
+                                    }
+                                }
+                                .buttonStyle(.bordered)
+                                .controlSize(.small)
+                            }
+                            .padding(.top, 2)
                         }
                     )
                     .overlay(
@@ -1086,7 +1116,7 @@ public struct SettingsView: View {
             .disabled(isTesting)
 
             Button(action: {
-                removeKey(key)
+                pendingDeleteAPIKey = key
             }) {
                 Image(systemName: "trash")
                     .font(.system(size: 10.5))
@@ -1094,6 +1124,23 @@ public struct SettingsView: View {
                     .frame(width: 18, height: 18)
             }
             .buttonStyle(.borderless)
+            .help(isVi ? "Xoá API Key này" : "Remove this API Key")
+            .confirmationDialog(
+                isVi ? "Xoá Gemini API Key (\(APIKeyRotator.maskKey(key))) khỏi danh sách?" : "Remove Gemini API Key (\(APIKeyRotator.maskKey(key))) from the list?",
+                isPresented: Binding(
+                    get: { pendingDeleteAPIKey == key },
+                    set: { if !$0 { pendingDeleteAPIKey = nil } }
+                ),
+                titleVisibility: .visible
+            ) {
+                Button(isVi ? "Xoá API Key" : "Remove API Key", role: .destructive) {
+                    removeKey(key)
+                    pendingDeleteAPIKey = nil
+                }
+                Button(isVi ? "Hủy" : "Cancel", role: .cancel) {
+                    pendingDeleteAPIKey = nil
+                }
+            }
         }
         .padding(.horizontal, 6)
         .padding(.vertical, 3)
@@ -1830,6 +1877,23 @@ public struct SettingsView: View {
                                 .menuStyle(.borderedButton)
                                 .controlSize(.mini)
                                 .fixedSize()
+
+                                Button(action: {
+                                    if let pasted = NSPasteboard.general.string(forType: .string)?.trimmingCharacters(in: .whitespacesAndNewlines),
+                                       !pasted.isEmpty {
+                                        applyCustomPromptTemplate(id: customPreset.id, template: pasted)
+                                    }
+                                }) {
+                                    HStack(spacing: 3) {
+                                        Image(systemName: "doc.on.clipboard")
+                                            .font(.system(size: 9))
+                                        Text(isVi ? "Dán" : "Paste")
+                                            .font(.system(size: 9.5))
+                                    }
+                                }
+                                .buttonStyle(.bordered)
+                                .controlSize(.mini)
+                                .help(isVi ? "Dán nội dung Prompt từ Clipboard" : "Paste Prompt content from Clipboard")
 
                                 Spacer()
 
@@ -2888,13 +2952,38 @@ public struct SettingsView: View {
                     .fill(Color(nsColor: .textBackgroundColor))
                     .frame(height: 180)
                     .overlay(
-                        VStack(spacing: 6) {
+                        VStack(spacing: 8) {
                             Image(systemName: "eye.slash")
                                 .font(.system(size: 24))
                                 .foregroundColor(.secondary)
                             Text(loc.tr(.noIgnoredApps))
                                 .font(.system(size: 12, weight: .medium))
                                 .foregroundColor(.secondary)
+
+                            Button(action: {
+                                let presets: [(name: String, bid: String)] = [
+                                    ("Keychain Access", "com.apple.keychainaccess"),
+                                    ("1Password", "com.1password.1password"),
+                                    ("Bitwarden", "com.bitwarden.desktop"),
+                                    ("KeePassXC", "org.keepassxc.keepassxc"),
+                                    ("Terminal", "com.apple.Terminal"),
+                                    ("iTerm2", "com.googlecode.iterm2")
+                                ]
+                                for p in presets {
+                                    let iconPath = NSWorkspace.shared.urlForApplication(withBundleIdentifier: p.bid)?.path
+                                    storageManager.addIgnoredApp(IgnoredApp(bundleIdentifier: p.bid, name: p.name, iconPath: iconPath))
+                                }
+                            }) {
+                                HStack(spacing: 4) {
+                                    Image(systemName: "lock.shield")
+                                        .font(.system(size: 10.5))
+                                    Text(isVi ? "Thêm nhanh trình quản lý mật khẩu & Terminal" : "Add Password Managers & Terminals")
+                                        .font(.system(size: 11, weight: .medium))
+                                }
+                            }
+                            .buttonStyle(.bordered)
+                            .controlSize(.small)
+                            .padding(.top, 2)
                         }
                     )
                     .overlay(
