@@ -1173,6 +1173,38 @@ public struct SettingsView: View {
             RoundedRectangle(cornerRadius: 4, style: .continuous)
                 .fill(Color.secondary.opacity(0.06))
         )
+        .contextMenu {
+            if index > 0 {
+                Button(isVi ? "Đặt làm Key ưu tiên #1" : "Make Primary Key (#1)") {
+                    moveAPIKey(at: index, offset: -index)
+                }
+                Divider()
+            }
+            Button(isVi ? "Kiểm tra Key này" : "Test This Key") {
+                testSingleKey(key)
+            }
+            Button(isVi ? "Sao chép API Key" : "Copy API Key") {
+                NSPasteboard.general.clearContents()
+                NSPasteboard.general.setString(key, forType: .string)
+                copiedAPIKeyFeedback = key
+                DispatchQueue.main.asyncAfter(deadline: .now() + 1.2) {
+                    if copiedAPIKeyFeedback == key {
+                        copiedAPIKeyFeedback = nil
+                    }
+                }
+            }
+            Button(isRevealed ? (isVi ? "Ẩn API Key" : "Hide API Key") : (isVi ? "Hiện API Key" : "Show API Key")) {
+                if isRevealed {
+                    revealedKeys.remove(key)
+                } else {
+                    revealedKeys.insert(key)
+                }
+            }
+            Divider()
+            Button(isVi ? "Xoá API Key..." : "Remove API Key...", role: .destructive) {
+                pendingDeleteAPIKey = key
+            }
+        }
     }
 
     @ViewBuilder
@@ -1581,6 +1613,29 @@ public struct SettingsView: View {
                                 RoundedRectangle(cornerRadius: 5, style: .continuous)
                                     .fill(isSelected ? Color.accentColor.opacity(0.16) : Color.clear)
                             )
+                            .contextMenu {
+                                Button(isHidden ? (isVi ? "Hiện & Dùng Prompt này" : "Show & Use This Prompt") : (isVi ? "Dùng Prompt này" : "Use This Prompt")) {
+                                    var s = storageManager.settings
+                                    s.hiddenBuiltinPromptIds.removeAll { $0 == preset.id }
+                                    s.selectedPromptId = preset.id
+                                    s.customSystemPrompt = preset.prompt
+                                    storageManager.settings = s
+                                    selectedInspectorPromptId = preset.id
+                                }
+                                Button(isVi ? "Tạo bản sao để sửa" : "Duplicate to Edit") {
+                                    let baseTitle = (isVi ? preset.shortTitleVi : preset.shortTitleEn) + (isVi ? " (Bản sao)" : " (Copy)")
+                                    createNewCustomPromptPreset(basePrompt: preset.prompt, baseName: baseTitle)
+                                }
+                                Button(isVi ? "Sao chép nội dung Prompt" : "Copy Prompt Text") {
+                                    copyPromptToClipboard(preset.prompt)
+                                }
+                                if isHidden || canHideMore {
+                                    Divider()
+                                    Button(isHidden ? (isVi ? "Hiển thị lại trên Popup" : "Show in Popup") : (isVi ? "Ẩn khỏi Popup" : "Hide from Popup")) {
+                                        toggleBuiltinPromptHidden(preset.id)
+                                    }
+                                }
+                            }
                         }
 
                         Divider()
@@ -1715,6 +1770,34 @@ public struct SettingsView: View {
                                     RoundedRectangle(cornerRadius: 5, style: .continuous)
                                         .fill(isSelected ? Color.accentColor.opacity(0.16) : Color.clear)
                                 )
+                                .contextMenu {
+                                    Button(isHidden ? (isVi ? "Hiện & Dùng Prompt này" : "Show & Use This Prompt") : (isVi ? "Dùng Prompt này" : "Use This Prompt")) {
+                                        var s = storageManager.settings
+                                        if let idx = s.customPromptPresets.firstIndex(where: { $0.id == customPreset.id }) {
+                                            s.customPromptPresets[idx].isHidden = false
+                                            s.selectedPromptId = customPreset.id.uuidString
+                                            s.customSystemPrompt = s.customPromptPresets[idx].prompt
+                                            storageManager.settings = s
+                                            selectedInspectorPromptId = customPreset.id.uuidString
+                                        }
+                                    }
+                                    Button(isVi ? "Nhân bản Custom Prompt" : "Duplicate Custom Prompt") {
+                                        let copyTitle = displayTitle + (isVi ? " (Bản sao)" : " (Copy)")
+                                        createNewCustomPromptPreset(basePrompt: customPreset.prompt, baseName: copyTitle)
+                                    }
+                                    Button(isVi ? "Sao chép nội dung Prompt" : "Copy Prompt Text") {
+                                        copyPromptToClipboard(customPreset.prompt)
+                                    }
+                                    if isHidden || canHideMore {
+                                        Button(isHidden ? (isVi ? "Hiển thị lại trên Popup" : "Show in Popup") : (isVi ? "Ẩn khỏi Popup" : "Hide from Popup")) {
+                                            toggleCustomPromptHidden(customPreset.id)
+                                        }
+                                    }
+                                    Divider()
+                                    Button(isVi ? "Xoá Custom Prompt..." : "Delete Custom Prompt...", role: .destructive) {
+                                        pendingDeleteCustomPromptId = customPreset.id
+                                    }
+                                }
                             }
                         }
                     }
@@ -2576,6 +2659,39 @@ public struct SettingsView: View {
                                 .padding(.horizontal, 8)
                                 .padding(.vertical, 4)
                                 .background(RoundedRectangle(cornerRadius: 5).fill(Color.secondary.opacity(0.08)))
+                                .contextMenu {
+                                    Button(isVi ? "Sửa thuật ngữ này" : "Edit Term") {
+                                        newGlossarySourceInput = entry.sourceTerm
+                                        newGlossaryTargetInput = entry.targetTerm
+                                    }
+                                    Button(isVi ? "Đảo chiều từ gốc & nghĩa chuẩn" : "Swap Source & Target") {
+                                        var updated = activeProj
+                                        if let idx = updated.glossary.firstIndex(where: { $0.id == entry.id }) {
+                                            updated.glossary[idx] = GlossaryEntry(
+                                                id: entry.id,
+                                                sourceTerm: entry.targetTerm,
+                                                targetTerm: entry.sourceTerm,
+                                                createdAt: entry.createdAt
+                                            )
+                                            storageManager.updateProject(updated)
+                                        }
+                                    }
+                                    Button(isVi ? "Sao chép cặp thuật ngữ" : "Copy Term Pair") {
+                                        let pairText = "\(entry.sourceTerm)\t\(entry.targetTerm)"
+                                        NSPasteboard.general.clearContents()
+                                        NSPasteboard.general.setString(pairText, forType: .string)
+                                        copiedGlossaryEntryId = entry.id
+                                        DispatchQueue.main.asyncAfter(deadline: .now() + 1.2) {
+                                            if copiedGlossaryEntryId == entry.id {
+                                                copiedGlossaryEntryId = nil
+                                            }
+                                        }
+                                    }
+                                    Divider()
+                                    Button(isVi ? "Xoá thuật ngữ" : "Delete Term", role: .destructive) {
+                                        storageManager.removeGlossaryEntry(projectId: activeProj.id, entryId: entry.id)
+                                    }
+                                }
                             }
                         }
                         .padding(4)
@@ -3311,6 +3427,33 @@ public struct SettingsView: View {
         .onTapGesture {
             selectedIgnoredAppId = app.id
         }
+        .contextMenu {
+            if let path = app.iconPath ?? NSWorkspace.shared.urlForApplication(withBundleIdentifier: app.bundleIdentifier)?.path,
+               FileManager.default.fileExists(atPath: path) {
+                Button(isVi ? "Hiển thị trong Finder" : "Reveal in Finder") {
+                    NSWorkspace.shared.selectFile(path, inFileViewerRootedAtPath: "")
+                }
+            }
+            if !app.bundleIdentifier.isEmpty {
+                Button(isVi ? "Sao chép Bundle ID" : "Copy Bundle ID") {
+                    NSPasteboard.general.clearContents()
+                    NSPasteboard.general.setString(app.bundleIdentifier, forType: .string)
+                    copiedIgnoredAppBid = app.id
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 1.2) {
+                        if copiedIgnoredAppBid == app.id {
+                            copiedIgnoredAppBid = nil
+                        }
+                    }
+                }
+            }
+            Divider()
+            Button(isVi ? "Bỏ chặn ứng dụng này" : "Remove Ignored App", role: .destructive) {
+                storageManager.removeIgnoredApp(bundleIdentifier: app.bundleIdentifier.isEmpty ? app.name : app.bundleIdentifier)
+                if selectedIgnoredAppId == app.id {
+                    selectedIgnoredAppId = nil
+                }
+            }
+        }
     }
 
     private func appIconImage(for app: IgnoredApp) -> Image {
@@ -3777,10 +3920,36 @@ public struct SettingsView: View {
         let activeProjName = storageManager.activeProject.name
 
         return HStack(spacing: 10) {
-            Button(action: {
-                stopShortcutRecording()
-                selectedTab = .geminiAI
-            }) {
+            Menu {
+                ForEach(AppSettings.presetModels, id: \.self) { preset in
+                    let isSelected = storageManager.settings.selectedModel == preset && !isCustomModelMode
+                    Button(isSelected ? "✓ \(preset)" : preset) {
+                        isCustomModelMode = false
+                        selectedModelTestStatus = nil
+                        var s = storageManager.settings
+                        s.selectedModel = preset
+                        storageManager.settings = s
+                    }
+                }
+                Divider()
+                Button(isVi ? "Dán & Thêm API Key từ Clipboard" : "Paste & Add API Key from Clipboard") {
+                    pasteAndAddKeyFromClipboard()
+                }
+                if keyCount > 0 {
+                    Button(isVi ? "Kiểm tra tất cả Key" : "Test All Keys") {
+                        testAllAPIKeys()
+                    }
+                    Button(isVi ? "Đặt lại trạng thái Key" : "Reset Key Cooldowns") {
+                        APIKeyRotator.shared.clearState()
+                        keyRefreshTrigger = UUID()
+                    }
+                }
+                Divider()
+                Button(isVi ? "Quản lý Gemini AI..." : "Manage Gemini AI...") {
+                    stopShortcutRecording()
+                    selectedTab = .geminiAI
+                }
+            } label: {
                 HStack(spacing: 4) {
                     Circle()
                         .fill(keyCount > 0 ? Color.green : Color.orange)
@@ -3792,8 +3961,9 @@ public struct SettingsView: View {
                         .foregroundColor(keyCount > 0 ? .secondary : .orange)
                 }
             }
-            .buttonStyle(.plain)
-            .help(isVi ? "Chuyển tới tab Gemini AI" : "Go to Gemini AI tab")
+            .menuStyle(.borderlessButton)
+            .fixedSize()
+            .help(isVi ? "Đổi nhanh Model Gemini, kiểm tra Key hoặc mở tab Gemini AI" : "Quickly switch Gemini Model, test keys, or open Gemini AI tab")
 
             Text("·")
                 .font(.system(size: 10.5))
