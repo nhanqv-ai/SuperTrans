@@ -92,6 +92,8 @@ public struct SettingsView: View {
     @State private var backupStatusMessage: String? = nil
     @State private var copiedPopoverItemId: UUID? = nil
     @State private var didCopyAllPopoverItemsFeedback: Bool = false
+    @State private var popoverItemsSearchQuery: String = ""
+    @State private var ignoredAppsSearchQuery: String = ""
     @State private var isDropTargetedIgnoredApps: Bool = false
     @State private var pendingDeleteAPIKey: String? = nil
     @State private var newCustomPromptNameInput: String = ""
@@ -1551,6 +1553,50 @@ public struct SettingsView: View {
         storageManager.settings = s
     }
 
+    private func importCustomPromptsFromFilePanel() {
+        NSApp.activate(ignoringOtherApps: true)
+        let panel = NSOpenPanel()
+        panel.allowedContentTypes = [.json, .plainText]
+        panel.allowsMultipleSelection = false
+        panel.canChooseDirectories = false
+        panel.canChooseFiles = true
+        guard panel.runModal() == .OK, let url = panel.url,
+              let data = try? Data(contentsOf: url) else { return }
+
+        if let importedPresets = try? JSONDecoder().decode([CustomPromptPreset].self, from: data), !importedPresets.isEmpty {
+            var s = storageManager.settings
+            var lastAddedId: String? = nil
+            for preset in importedPresets {
+                let fresh = CustomPromptPreset(name: preset.name, prompt: preset.prompt, isHidden: false)
+                s.customPromptPresets.append(fresh)
+                lastAddedId = fresh.id.uuidString
+            }
+            storageManager.settings = s
+            if let lastAddedId = lastAddedId {
+                selectedInspectorPromptId = lastAddedId
+            }
+        } else if let text = String(data: data, encoding: .utf8)?.trimmingCharacters(in: .whitespacesAndNewlines), !text.isEmpty {
+            let fileName = url.deletingPathExtension().lastPathComponent
+            createNewCustomPromptPreset(basePrompt: text, baseName: fileName)
+        }
+    }
+
+    private func exportCustomPromptsToFilePanel() {
+        let presets = storageManager.settings.customPromptPresets
+        guard !presets.isEmpty else { return }
+        NSApp.activate(ignoringOtherApps: true)
+        let panel = NSSavePanel()
+        panel.allowedContentTypes = [.json]
+        panel.nameFieldStringValue = "SuperTrans-CustomPrompts.json"
+        panel.canCreateDirectories = true
+        guard panel.runModal() == .OK, let url = panel.url else { return }
+        let enc = JSONEncoder()
+        enc.outputFormatting = [.prettyPrinted, .sortedKeys]
+        if let data = try? enc.encode(presets) {
+            try? data.write(to: url, options: .atomic)
+        }
+    }
+
     private var promptTabContent: some View {
         let settings = storageManager.settings
         let activeId = settings.resolvedActivePromptId
@@ -1582,6 +1628,24 @@ public struct SettingsView: View {
                     .buttonStyle(.bordered)
                     .controlSize(.small)
                 }
+
+                Menu {
+                    Button(isVi ? "Nhập Custom Prompt từ tệp (.json / .txt)..." : "Import Custom Prompts from File (.json / .txt)...") {
+                        importCustomPromptsFromFilePanel()
+                    }
+                    if !settings.customPromptPresets.isEmpty {
+                        Button(isVi ? "Xuất danh sách Custom Prompt ra tệp (.json)..." : "Export Custom Prompts to File (.json)...") {
+                            exportCustomPromptsToFilePanel()
+                        }
+                    }
+                } label: {
+                    Image(systemName: "square.and.arrow.up.on.square")
+                        .font(.system(size: 10.5))
+                }
+                .menuStyle(.borderedButton)
+                .controlSize(.small)
+                .fixedSize()
+                .help(isVi ? "Nhập hoặc xuất Custom Prompt bằng tệp (.json / .txt)" : "Import or export Custom Prompts (.json / .txt)")
 
                 Button(action: {
                     createNewCustomPromptPreset()
@@ -2921,6 +2985,13 @@ public struct SettingsView: View {
 
     private func verifiedExamplesPopoverContent(for project: TranslationProject) -> some View {
         let verifiedItems = storageManager.items.filter { $0.projectId == project.id && $0.isVerified }
+        let filteredVerified: [TranslationItem] = {
+            let q = popoverItemsSearchQuery.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+            guard !q.isEmpty else { return verifiedItems }
+            return verifiedItems.filter {
+                ($0.sourceText?.lowercased().contains(q) ?? false) || $0.translatedText.lowercased().contains(q)
+            }
+        }()
         return VStack(alignment: .leading, spacing: 8) {
             HStack {
                 Image(systemName: "checkmark.seal.fill")
@@ -2977,6 +3048,29 @@ public struct SettingsView: View {
                 }
             }
 
+            if verifiedItems.count >= 3 {
+                HStack(spacing: 4) {
+                    Image(systemName: "magnifyingglass")
+                        .font(.system(size: 10))
+                        .foregroundColor(.secondary)
+                    TextField(isVi ? "Lọc câu mẫu..." : "Filter examples...", text: $popoverItemsSearchQuery)
+                        .textFieldStyle(.plain)
+                        .font(.system(size: 11))
+                    if !popoverItemsSearchQuery.isEmpty {
+                        Button(action: { popoverItemsSearchQuery = "" }) {
+                            Image(systemName: "xmark.circle.fill")
+                                .font(.system(size: 10))
+                                .foregroundColor(.secondary)
+                        }
+                        .buttonStyle(.plain)
+                    }
+                }
+                .padding(.horizontal, 7)
+                .padding(.vertical, 4)
+                .background(RoundedRectangle(cornerRadius: 5).fill(Color(nsColor: .textBackgroundColor)))
+                .overlay(RoundedRectangle(cornerRadius: 5).stroke(Color(nsColor: .separatorColor), lineWidth: 0.7))
+            }
+
             if verifiedItems.isEmpty {
                 Text(isVi
                      ? "Chưa có câu mẫu chuẩn nào trong dự án này. Khi dịch văn bản trên Popup, hãy bấm biểu tượng cây bút để sửa và lưu bản dịch chuẩn cho AI học."
@@ -2985,10 +3079,15 @@ public struct SettingsView: View {
                     .foregroundColor(.secondary)
                     .fixedSize(horizontal: false, vertical: true)
                     .padding(.vertical, 12)
+            } else if filteredVerified.isEmpty {
+                Text(isVi ? "Không tìm thấy câu mẫu phù hợp." : "No matching verified examples.")
+                    .font(.system(size: 11))
+                    .foregroundColor(.secondary)
+                    .padding(.vertical, 12)
             } else {
                 ScrollView {
                     LazyVStack(alignment: .leading, spacing: 6) {
-                        ForEach(verifiedItems) { item in
+                        ForEach(filteredVerified) { item in
                             HStack(alignment: .top, spacing: 8) {
                                 VStack(alignment: .leading, spacing: 3) {
                                     if let src = item.sourceText, !src.isEmpty {
@@ -3047,6 +3146,13 @@ public struct SettingsView: View {
 
     private func pinnedItemsPopoverContent(for project: TranslationProject) -> some View {
         let pinnedItems = storageManager.items.filter { $0.projectId == project.id && $0.isPinned }
+        let filteredPinned: [TranslationItem] = {
+            let q = popoverItemsSearchQuery.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+            guard !q.isEmpty else { return pinnedItems }
+            return pinnedItems.filter {
+                ($0.sourceText?.lowercased().contains(q) ?? false) || $0.translatedText.lowercased().contains(q)
+            }
+        }()
         return VStack(alignment: .leading, spacing: 8) {
             HStack {
                 Image(systemName: "pin.fill")
@@ -3103,6 +3209,29 @@ public struct SettingsView: View {
                 }
             }
 
+            if pinnedItems.count >= 3 {
+                HStack(spacing: 4) {
+                    Image(systemName: "magnifyingglass")
+                        .font(.system(size: 10))
+                        .foregroundColor(.secondary)
+                    TextField(isVi ? "Lọc câu ghim..." : "Filter pinned items...", text: $popoverItemsSearchQuery)
+                        .textFieldStyle(.plain)
+                        .font(.system(size: 11))
+                    if !popoverItemsSearchQuery.isEmpty {
+                        Button(action: { popoverItemsSearchQuery = "" }) {
+                            Image(systemName: "xmark.circle.fill")
+                                .font(.system(size: 10))
+                                .foregroundColor(.secondary)
+                        }
+                        .buttonStyle(.plain)
+                    }
+                }
+                .padding(.horizontal, 7)
+                .padding(.vertical, 4)
+                .background(RoundedRectangle(cornerRadius: 5).fill(Color(nsColor: .textBackgroundColor)))
+                .overlay(RoundedRectangle(cornerRadius: 5).stroke(Color(nsColor: .separatorColor), lineWidth: 0.7))
+            }
+
             if pinnedItems.isEmpty {
                 Text(isVi
                      ? "Chưa có bản dịch nào được ghim trong dự án này. Bấm biểu tượng ghim trên Popup hoặc trong Lịch sử để lưu các câu dịch quan trọng."
@@ -3111,10 +3240,15 @@ public struct SettingsView: View {
                     .foregroundColor(.secondary)
                     .fixedSize(horizontal: false, vertical: true)
                     .padding(.vertical, 12)
+            } else if filteredPinned.isEmpty {
+                Text(isVi ? "Không tìm thấy câu ghim phù hợp." : "No matching pinned translations.")
+                    .font(.system(size: 11))
+                    .foregroundColor(.secondary)
+                    .padding(.vertical, 12)
             } else {
                 ScrollView {
                     LazyVStack(alignment: .leading, spacing: 6) {
-                        ForEach(pinnedItems) { item in
+                        ForEach(filteredPinned) { item in
                             HStack(alignment: .top, spacing: 8) {
                                 VStack(alignment: .leading, spacing: 3) {
                                     if let src = item.sourceText, !src.isEmpty {
@@ -3277,6 +3411,13 @@ public struct SettingsView: View {
         let ignoredCount = storageManager.settings.ignoredApps.count
         let ignoredBids = Set(storageManager.settings.ignoredApps.map { $0.bundleIdentifier.lowercased() })
         let selfBundleId = Bundle.main.bundleIdentifier?.lowercased() ?? "com.nhanqv.supertrans"
+        let filteredIgnoredApps: [IgnoredApp] = {
+            let q = ignoredAppsSearchQuery.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+            guard !q.isEmpty else { return storageManager.settings.ignoredApps }
+            return storageManager.settings.ignoredApps.filter {
+                $0.name.lowercased().contains(q) || $0.bundleIdentifier.lowercased().contains(q)
+            }
+        }()
 
         return VStack(alignment: .leading, spacing: 10) {
             HStack(spacing: 6) {
@@ -3289,6 +3430,30 @@ public struct SettingsView: View {
                     .foregroundColor(.secondary)
 
                 Spacer()
+
+                if ignoredCount >= 4 {
+                    HStack(spacing: 4) {
+                        Image(systemName: "magnifyingglass")
+                            .font(.system(size: 9.5))
+                            .foregroundColor(.secondary)
+                        TextField(isVi ? "Lọc ứng dụng..." : "Filter apps...", text: $ignoredAppsSearchQuery)
+                            .textFieldStyle(.plain)
+                            .font(.system(size: 10.5))
+                            .frame(width: 120)
+                        if !ignoredAppsSearchQuery.isEmpty {
+                            Button(action: { ignoredAppsSearchQuery = "" }) {
+                                Image(systemName: "xmark.circle.fill")
+                                    .font(.system(size: 9.5))
+                                    .foregroundColor(.secondary)
+                            }
+                            .buttonStyle(.plain)
+                        }
+                    }
+                    .padding(.horizontal, 6)
+                    .padding(.vertical, 3)
+                    .background(RoundedRectangle(cornerRadius: 4).fill(Color(nsColor: .textBackgroundColor)))
+                    .overlay(RoundedRectangle(cornerRadius: 4).stroke(Color(nsColor: .separatorColor), lineWidth: 0.6))
+                }
             }
 
             Text(loc.tr(.ignoredAppsDescription))
@@ -3345,12 +3510,20 @@ public struct SettingsView: View {
                     .onDrop(of: [.fileURL], isTargeted: $isDropTargetedIgnoredApps, perform: handleDroppedAppProviders)
             } else {
                 ScrollView {
-                    LazyVStack(spacing: 2) {
-                        ForEach(storageManager.settings.ignoredApps) { app in
-                            ignoredAppRow(app)
+                    if filteredIgnoredApps.isEmpty {
+                        Text(isVi ? "Không tìm thấy ứng dụng phù hợp." : "No matching ignored apps.")
+                            .font(.system(size: 11))
+                            .foregroundColor(.secondary)
+                            .frame(maxWidth: .infinity)
+                            .padding(.vertical, 24)
+                    } else {
+                        LazyVStack(spacing: 2) {
+                            ForEach(filteredIgnoredApps) { app in
+                                ignoredAppRow(app)
+                            }
                         }
+                        .padding(4)
                     }
-                    .padding(4)
                 }
                 .frame(height: 180)
                 .background(Color(nsColor: .textBackgroundColor))
