@@ -192,11 +192,43 @@ public struct SettingsView: View {
                     .contentShape(Rectangle())
                 }
                 .buttonStyle(.plain)
+                .help(tabSummaryTooltip(for: tab))
             }
         }
         .padding(.horizontal, 12)
         .padding(.vertical, 6)
         .frame(maxWidth: .infinity)
+    }
+
+    private func tabSummaryTooltip(for tab: SettingsTab) -> String {
+        let s = storageManager.settings
+        switch tab {
+        case .general:
+            return isVi
+                ? "Ngôn ngữ đích: \(s.targetLanguage) · Lịch sử tối đa: \(s.capacity)"
+                : "Target: \(s.targetLanguage) · Capacity: \(s.capacity)"
+        case .geminiAI:
+            return isVi
+                ? "\(s.validAPIKeys.count) API Key · Model: \(s.selectedModel)"
+                : "\(s.validAPIKeys.count) API Keys · Model: \(s.selectedModel)"
+        case .prompt:
+            return isVi
+                ? "Đang dùng: \(activePromptShortTitle) (\(s.totalVisiblePromptCount) hiển thị)"
+                : "Active: \(activePromptShortTitle) (\(s.totalVisiblePromptCount) visible)"
+        case .projects:
+            let proj = storageManager.activeProject
+            return isVi
+                ? "Dự án: \(proj.name) (\(proj.glossary.count) thuật ngữ)"
+                : "Project: \(proj.name) (\(proj.glossary.count) terms)"
+        case .ignoredApps:
+            return isVi
+                ? "\(s.ignoredApps.count) ứng dụng đang bỏ qua"
+                : "\(s.ignoredApps.count) ignored apps"
+        case .about:
+            return isVi
+                ? "SuperTrans v\(updateManager.currentVersion) · \(storageManager.items.count) bản dịch đã lưu"
+                : "SuperTrans v\(updateManager.currentVersion) · \(storageManager.items.count) stored items"
+        }
     }
 
     // MARK: - Content Area
@@ -986,6 +1018,24 @@ public struct SettingsView: View {
                         .help(isVi ? "Xoá tất cả các API Key không hợp lệ khỏi danh sách" : "Remove all invalid API Keys from the list")
                     }
                 }
+
+                Menu {
+                    Button(isVi ? "Nhập danh sách API Key từ tệp (.txt)..." : "Import API Keys from File (.txt)...") {
+                        importAPIKeysFromFilePanel()
+                    }
+                    if !validKeys.isEmpty {
+                        Button(isVi ? "Xuất danh sách API Key ra tệp (.txt)..." : "Export API Keys to File (.txt)...") {
+                            exportAPIKeysToFilePanel()
+                        }
+                    }
+                } label: {
+                    Image(systemName: "square.and.arrow.up.on.square")
+                        .font(.system(size: 10))
+                }
+                .menuStyle(.borderedButton)
+                .controlSize(.small)
+                .fixedSize()
+                .help(isVi ? "Nhập hoặc xuất danh sách API Key bằng tệp (.txt)" : "Import or export API Keys file (.txt)")
 
                 Spacer()
 
@@ -2580,6 +2630,8 @@ public struct SettingsView: View {
                     .controlSize(.mini)
                     .help(isVi ? "Dán nhiều cặp thuật ngữ từ Clipboard (mỗi dòng dạng: từ_gốc -> nghĩa_đích hoặc phân tách bằng Tab)" : "Paste multiple glossary pairs from Clipboard (one per line: source -> target or Tab-separated)")
 
+                    let otherProjectsWithGlossary = storageManager.projects.filter { $0.id != activeProj.id && !$0.glossary.isEmpty }
+
                     Menu {
                         Button(isVi ? "Nhập từ điển từ tệp (.tsv / .csv / .txt)..." : "Import Glossary from File (.tsv / .csv / .txt)...") {
                             importGlossaryFromFilePanel()
@@ -2587,6 +2639,22 @@ public struct SettingsView: View {
                         if !activeProj.glossary.isEmpty {
                             Button(isVi ? "Xuất từ điển ra tệp (.tsv)..." : "Export Glossary to File (.tsv)...") {
                                 exportGlossaryToFilePanel()
+                            }
+                        }
+                        if !otherProjectsWithGlossary.isEmpty {
+                            Divider()
+                            Menu(isVi ? "Gộp thuật ngữ từ dự án khác" : "Merge Terms from Another Project") {
+                                ForEach(otherProjectsWithGlossary) { otherProj in
+                                    Button("\(otherProj.name) (\(otherProj.glossary.count))") {
+                                        for entry in otherProj.glossary {
+                                            storageManager.addOrUpdateGlossaryEntry(
+                                                projectId: activeProj.id,
+                                                sourceTerm: entry.sourceTerm,
+                                                targetTerm: entry.targetTerm
+                                            )
+                                        }
+                                    }
+                                }
                             }
                         }
                     } label: {
@@ -3307,7 +3375,11 @@ public struct SettingsView: View {
 
     private func pasteAndAddKeyFromClipboard() {
         guard let clipStr = NSPasteboard.general.string(forType: .string) else { return }
-        let parts = clipStr
+        importRawAPIKeysString(clipStr)
+    }
+
+    private func importRawAPIKeysString(_ raw: String) {
+        let parts = raw
             .components(separatedBy: CharacterSet(charactersIn: ",;\n\r\t "))
             .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
             .filter { !$0.isEmpty }
@@ -3322,6 +3394,31 @@ public struct SettingsView: View {
         storageManager.settings = s
         newAPIKeyInput = ""
         keyRefreshTrigger = UUID()
+    }
+
+    private func importAPIKeysFromFilePanel() {
+        NSApp.activate(ignoringOtherApps: true)
+        let panel = NSOpenPanel()
+        panel.allowedContentTypes = [.plainText]
+        panel.allowsMultipleSelection = false
+        panel.canChooseDirectories = false
+        panel.canChooseFiles = true
+        guard panel.runModal() == .OK, let url = panel.url,
+              let content = try? String(contentsOf: url, encoding: .utf8) else { return }
+        importRawAPIKeysString(content)
+    }
+
+    private func exportAPIKeysToFilePanel() {
+        let keys = storageManager.settings.validAPIKeys
+        guard !keys.isEmpty else { return }
+        NSApp.activate(ignoringOtherApps: true)
+        let panel = NSSavePanel()
+        panel.allowedContentTypes = [.plainText]
+        panel.nameFieldStringValue = "SuperTrans-APIKeys.txt"
+        panel.canCreateDirectories = true
+        guard panel.runModal() == .OK, let url = panel.url else { return }
+        let joined = keys.joined(separator: "\n")
+        try? joined.write(to: url, atomically: true, encoding: .utf8)
     }
 
     private func addKeysFromInput() {
