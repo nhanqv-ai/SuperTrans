@@ -204,9 +204,10 @@ public struct SettingsView: View {
         let s = storageManager.settings
         switch tab {
         case .general:
+            let langDisplay = LanguageOption.option(for: s.targetLanguage).displayName
             return isVi
-                ? "Ngôn ngữ đích: \(s.targetLanguage) · Lịch sử tối đa: \(s.capacity)"
-                : "Target: \(s.targetLanguage) · Capacity: \(s.capacity)"
+                ? "Ngôn ngữ đích: \(langDisplay) · Lịch sử tối đa: \(s.capacity)"
+                : "Target: \(langDisplay) · Capacity: \(s.capacity)"
         case .geminiAI:
             return isVi
                 ? "\(s.validAPIKeys.count) API Key · Model: \(s.selectedModel)"
@@ -295,10 +296,10 @@ public struct SettingsView: View {
                     .pickerStyle(.menu)
                     .frame(width: 210)
 
-                    if storageManager.settings.targetLanguage != "Vietnamese" {
+                    if storageManager.settings.targetLanguage != AppSettings.defaultTargetLanguage {
                         Button(action: {
                             var s = storageManager.settings
-                            s.targetLanguage = "Vietnamese"
+                            s.targetLanguage = AppSettings.defaultTargetLanguage
                             storageManager.settings = s
                         }) {
                             Image(systemName: "arrow.counterclockwise")
@@ -3099,6 +3100,19 @@ public struct SettingsView: View {
                     .buttonStyle(.bordered)
                     .controlSize(.mini)
                     .help(isVi ? "Sao chép toàn bộ câu mẫu chuẩn của dự án vào Clipboard" : "Copy all verified examples in this project to Clipboard")
+
+                    Button(action: {
+                        exportItemsToTSVPanel(
+                            items: verifiedItems,
+                            fileName: "SuperTrans-Verified-\(project.name).tsv"
+                        )
+                    }) {
+                        Image(systemName: "square.and.arrow.up")
+                            .font(.system(size: 9))
+                    }
+                    .buttonStyle(.bordered)
+                    .controlSize(.mini)
+                    .help(isVi ? "Xuất danh sách câu mẫu chuẩn ra tệp (.tsv)" : "Export verified examples to file (.tsv)")
                 }
 
                 if verifiedItems.count > 1 {
@@ -3202,6 +3216,36 @@ public struct SettingsView: View {
                             }
                             .padding(8)
                             .background(RoundedRectangle(cornerRadius: 6).fill(Color.secondary.opacity(0.08)))
+                            .contextMenu {
+                                Button(isVi ? "Sao chép bản dịch" : "Copy Translation") {
+                                    NSPasteboard.general.clearContents()
+                                    NSPasteboard.general.setString(item.translatedText, forType: .string)
+                                }
+                                if let src = item.sourceText, !src.isEmpty {
+                                    Button(isVi ? "Sao chép văn bản gốc" : "Copy Source Text") {
+                                        NSPasteboard.general.clearContents()
+                                    NSPasteboard.general.setString(src, forType: .string)
+                                    }
+                                    Button(isVi ? "Sao chép cặp Gốc & Dịch" : "Copy Source & Translation Pair") {
+                                        NSPasteboard.general.clearContents()
+                                        NSPasteboard.general.setString("\(src)\t\(item.translatedText)", forType: .string)
+                                    }
+                                    if src.count <= 120 {
+                                        Divider()
+                                        Button(isVi ? "Đưa vào Từ điển thuật ngữ của dự án" : "Add to Project Glossary") {
+                                            storageManager.addOrUpdateGlossaryEntry(
+                                                projectId: project.id,
+                                                sourceTerm: src,
+                                                targetTerm: item.translatedText
+                                            )
+                                        }
+                                    }
+                                }
+                                Divider()
+                                Button(isVi ? "Gỡ khỏi câu mẫu chuẩn" : "Remove Verified Example", role: .destructive) {
+                                    storageManager.setTranslationVerified(id: item.id, isVerified: false)
+                                }
+                            }
                         }
                     }
                 }
@@ -3260,6 +3304,19 @@ public struct SettingsView: View {
                     .buttonStyle(.bordered)
                     .controlSize(.mini)
                     .help(isVi ? "Sao chép toàn bộ bản dịch đã ghim của dự án vào Clipboard" : "Copy all pinned translations in this project to Clipboard")
+
+                    Button(action: {
+                        exportItemsToTSVPanel(
+                            items: pinnedItems,
+                            fileName: "SuperTrans-Pinned-\(project.name).tsv"
+                        )
+                    }) {
+                        Image(systemName: "square.and.arrow.up")
+                            .font(.system(size: 9))
+                    }
+                    .buttonStyle(.bordered)
+                    .controlSize(.mini)
+                    .help(isVi ? "Xuất danh sách bản dịch đã ghim ra tệp (.tsv)" : "Export pinned translations to file (.tsv)")
                 }
 
                 if pinnedItems.count > 1 {
@@ -3363,6 +3420,36 @@ public struct SettingsView: View {
                             }
                             .padding(8)
                             .background(RoundedRectangle(cornerRadius: 6).fill(Color.secondary.opacity(0.08)))
+                            .contextMenu {
+                                Button(isVi ? "Sao chép bản dịch" : "Copy Translation") {
+                                    NSPasteboard.general.clearContents()
+                                    NSPasteboard.general.setString(item.translatedText, forType: .string)
+                                }
+                                if let src = item.sourceText, !src.isEmpty {
+                                    Button(isVi ? "Sao chép văn bản gốc" : "Copy Source Text") {
+                                        NSPasteboard.general.clearContents()
+                                        NSPasteboard.general.setString(src, forType: .string)
+                                    }
+                                    Button(isVi ? "Sao chép cặp Gốc & Dịch" : "Copy Source & Translation Pair") {
+                                        NSPasteboard.general.clearContents()
+                                        NSPasteboard.general.setString("\(src)\t\(item.translatedText)", forType: .string)
+                                    }
+                                    if src.count <= 120 {
+                                        Divider()
+                                        Button(isVi ? "Đưa vào Từ điển thuật ngữ của dự án" : "Add to Project Glossary") {
+                                            storageManager.addOrUpdateGlossaryEntry(
+                                                projectId: project.id,
+                                                sourceTerm: src,
+                                                targetTerm: item.translatedText
+                                            )
+                                        }
+                                    }
+                                }
+                                Divider()
+                                Button(isVi ? "Bỏ ghim bản dịch này" : "Unpin Translation", role: .destructive) {
+                                    storageManager.togglePin(id: item.id)
+                                }
+                            }
                         }
                     }
                 }
@@ -3371,6 +3458,22 @@ public struct SettingsView: View {
         }
         .padding(12)
         .frame(width: 370)
+    }
+
+    private func exportItemsToTSVPanel(items: [TranslationItem], fileName: String) {
+        guard !items.isEmpty else { return }
+        NSApp.activate(ignoringOtherApps: true)
+        let panel = NSSavePanel()
+        panel.allowedContentTypes = [.tabSeparatedText, .plainText]
+        panel.nameFieldStringValue = fileName
+        panel.canCreateDirectories = true
+        guard panel.runModal() == .OK, let url = panel.url else { return }
+        let formatted = items.map { item in
+            let cleanSrc = (item.sourceText ?? "").replacingOccurrences(of: "\t", with: " ").replacingOccurrences(of: "\n", with: " ")
+            let cleanDst = item.translatedText.replacingOccurrences(of: "\t", with: " ").replacingOccurrences(of: "\n", with: " ")
+            return cleanSrc.isEmpty ? cleanDst : "\(cleanSrc)\t\(cleanDst)"
+        }.joined(separator: "\n")
+        try? formatted.write(to: url, atomically: true, encoding: .utf8)
     }
 
     private func pasteAndAddKeyFromClipboard() {
@@ -3708,6 +3811,24 @@ public struct SettingsView: View {
                 .fixedSize()
                 .help(isVi ? "Thêm nhanh các trình quản lý mật khẩu và Terminal phổ biến vào danh sách bỏ qua" : "Quickly add common password managers and terminals to the ignored list")
 
+                Menu {
+                    Button(isVi ? "Nhập danh sách ứng dụng bỏ qua (.json / .txt)..." : "Import Ignored Apps (.json / .txt)...") {
+                        importIgnoredAppsFromFilePanel()
+                    }
+                    if !storageManager.settings.ignoredApps.isEmpty {
+                        Button(isVi ? "Xuất danh sách ứng dụng bỏ qua (.json)..." : "Export Ignored Apps (.json)...") {
+                            exportIgnoredAppsToFilePanel()
+                        }
+                    }
+                } label: {
+                    Image(systemName: "square.and.arrow.up.on.square")
+                        .font(.system(size: 10))
+                }
+                .menuStyle(.borderedButton)
+                .controlSize(.small)
+                .fixedSize()
+                .help(isVi ? "Nhập hoặc xuất danh sách ứng dụng bỏ qua bằng tệp (.json / .txt)" : "Import or export ignored apps list (.json / .txt)")
+
                 Spacer()
 
                 if storageManager.settings.ignoredApps.count > 1 {
@@ -3937,6 +4058,50 @@ public struct SettingsView: View {
             storageManager.removeIgnoredApp(bundleIdentifier: match.bundleIdentifier.isEmpty ? match.name : match.bundleIdentifier)
         }
         selectedIgnoredAppId = nil
+    }
+
+    private func importIgnoredAppsFromFilePanel() {
+        NSApp.activate(ignoringOtherApps: true)
+        let panel = NSOpenPanel()
+        panel.allowedContentTypes = [.json, .plainText]
+        panel.allowsMultipleSelection = false
+        panel.canChooseDirectories = false
+        panel.canChooseFiles = true
+        guard panel.runModal() == .OK, let url = panel.url,
+              let data = try? Data(contentsOf: url) else { return }
+        let selfBundleId = Bundle.main.bundleIdentifier?.lowercased() ?? "com.nhanqv.supertrans"
+
+        if let importedApps = try? JSONDecoder().decode([IgnoredApp].self, from: data), !importedApps.isEmpty {
+            for app in importedApps where app.bundleIdentifier.lowercased() != selfBundleId {
+                let iconPath = app.iconPath ?? NSWorkspace.shared.urlForApplication(withBundleIdentifier: app.bundleIdentifier)?.path
+                storageManager.addIgnoredApp(IgnoredApp(bundleIdentifier: app.bundleIdentifier, name: app.name, iconPath: iconPath))
+            }
+        } else if let text = String(data: data, encoding: .utf8) {
+            let lines = text.components(separatedBy: .newlines)
+                .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+                .filter { !$0.isEmpty && $0.lowercased() != selfBundleId }
+            for bid in lines {
+                let appURL = NSWorkspace.shared.urlForApplication(withBundleIdentifier: bid)
+                let appName = appURL.map { FileManager.default.displayName(atPath: $0.path) } ?? bid
+                storageManager.addIgnoredApp(IgnoredApp(bundleIdentifier: bid, name: appName, iconPath: appURL?.path))
+            }
+        }
+    }
+
+    private func exportIgnoredAppsToFilePanel() {
+        let apps = storageManager.settings.ignoredApps
+        guard !apps.isEmpty else { return }
+        NSApp.activate(ignoringOtherApps: true)
+        let panel = NSSavePanel()
+        panel.allowedContentTypes = [.json]
+        panel.nameFieldStringValue = "SuperTrans-IgnoredApps.json"
+        panel.canCreateDirectories = true
+        guard panel.runModal() == .OK, let url = panel.url else { return }
+        let enc = JSONEncoder()
+        enc.outputFormatting = [.prettyPrinted, .sortedKeys]
+        if let data = try? enc.encode(apps) {
+            try? data.write(to: url, options: .atomic)
+        }
     }
 
     // MARK: - Tab 4: About & Storage Management (SuperClip Style)
@@ -4450,6 +4615,40 @@ public struct SettingsView: View {
             .menuStyle(.borderlessButton)
             .fixedSize()
             .help(isVi ? "Đổi nhanh Model Gemini, kiểm tra Key hoặc mở tab Gemini AI" : "Quickly switch Gemini Model, test keys, or open Gemini AI tab")
+
+            Text("·")
+                .font(.system(size: 10.5))
+                .foregroundColor(.secondary.opacity(0.6))
+
+            Menu {
+                let currentLang = storageManager.settings.targetLanguage
+                ForEach(LanguageOption.supported) { opt in
+                    let isSelected = opt.code.caseInsensitiveCompare(currentLang) == .orderedSame
+                    Button(isSelected ? "✓ \(opt.displayName)" : opt.displayName) {
+                        var s = storageManager.settings
+                        s.targetLanguage = opt.code
+                        storageManager.settings = s
+                    }
+                }
+                Divider()
+                Button(isVi ? "Mở tab Cài đặt Chung..." : "Open General Settings...") {
+                    stopShortcutRecording()
+                    selectedTab = .general
+                }
+            } label: {
+                let opt = LanguageOption.option(for: storageManager.settings.targetLanguage)
+                HStack(spacing: 3) {
+                    Image(systemName: "globe")
+                        .font(.system(size: 9.5))
+                    Text(opt.code == "vi" ? "Tiếng Việt" : opt.englishName)
+                        .font(.system(size: 10.5, weight: .medium))
+                        .lineLimit(1)
+                }
+                .foregroundColor(.secondary)
+            }
+            .menuStyle(.borderlessButton)
+            .fixedSize()
+            .help(isVi ? "Đổi nhanh Ngôn ngữ đích mặc định" : "Quickly switch Default Target Language")
 
             Text("·")
                 .font(.system(size: 10.5))
