@@ -30,7 +30,6 @@ public struct MainHistoryView: View {
     @ObservedObject private var loc = LocalizationManager.shared
 
     public let pasteboardWriter: any PasteboardWriting
-    public let autoPasteService: any AutoPasteServicing
     public let previousAppTracker: any PreviousAppTracking
 
     public var onDismiss: (() -> Void)?
@@ -48,7 +47,6 @@ public struct MainHistoryView: View {
     public init(
         storageManager: StorageManager,
         pasteboardWriter: any PasteboardWriting,
-        autoPasteService: any AutoPasteServicing = AutoPasteService.shared,
         previousAppTracker: any PreviousAppTracking = PreviousAppTracker.shared,
         onDismiss: (() -> Void)? = nil,
         onOpenSettings: (() -> Void)? = nil,
@@ -58,7 +56,6 @@ public struct MainHistoryView: View {
     ) {
         self.storageManager = storageManager
         self.pasteboardWriter = pasteboardWriter
-        self.autoPasteService = autoPasteService
         self.previousAppTracker = previousAppTracker
         self.onDismiss = onDismiss
         self.onOpenSettings = onOpenSettings
@@ -530,11 +527,12 @@ public struct MainHistoryView: View {
             isSelected: isSelected,
             shortcutNumber: shortcutNum,
             onSelect: { selected in
-                selectAndPasteItem(selected)
+                selectAndCopyItem(selected)
             },
             onCopyOriginal: { selected in
                 _ = pasteboardWriter.writeOriginal(selected, storageManager: storageManager)
                 onDismiss?()
+                previousAppTracker.restoreFocusToPreviousApp()
             },
             onOpenInPopup: { selected in
                 onDismiss?()
@@ -560,8 +558,8 @@ public struct MainHistoryView: View {
         let isVi = loc.languageCode == "vi"
         return HStack(spacing: 8) {
             Text(isVi
-                 ? "↑↓ Chọn · ⏎ Dán · ⌘1–9 Dán nhanh · ⌘O Mở Popup · ⌘⌫ Xoá"
-                 : "↑↓ Navigate · ⏎ Paste · ⌘1–9 Quick Paste · ⌘O Popup · ⌘⌫ Delete")
+                 ? "↑↓ Chọn · ⏎ Copy · ⌘1–9 Copy nhanh · ⌘O Mở Popup · ⌘⌫ Xoá"
+                 : "↑↓ Navigate · ⏎ Copy · ⌘1–9 Quick Copy · ⌘O Popup · ⌘⌫ Delete")
                 .font(.system(size: 9.5, weight: .medium))
                 .foregroundColor(.secondary)
                 .lineLimit(1)
@@ -595,15 +593,11 @@ public struct MainHistoryView: View {
 
     // MARK: - Selection & Keyboard Handling
 
-    private func selectAndPasteItem(_ item: TranslationItem) {
+    private func selectAndCopyItem(_ item: TranslationItem) {
         DualPreviewPanel.shared.hide(immediate: true)
         _ = pasteboardWriter.writeTranslation(item)
-        let targetApp = previousAppTracker.previousApp
         onDismiss?()
-
-        if storageManager.settings.autoPasteOnSelection && autoPasteService.isAccessibilityTrusted {
-            _ = autoPasteService.pasteToActiveApp(targetApp: targetApp, delay: 0.04, completion: nil)
-        }
+        previousAppTracker.restoreFocusToPreviousApp()
     }
 
     private func resetSelection(query: String? = nil, scrollProxy: ScrollViewProxy? = nil) {
@@ -631,7 +625,7 @@ public struct MainHistoryView: View {
         guard !items.isEmpty else { return }
         let idx = selectedIndex ?? 0
         guard idx >= 0 && idx < items.count else { return }
-        selectAndPasteItem(items[idx])
+        selectAndCopyItem(items[idx])
     }
 
     private func installKeyboardMonitor() {
@@ -670,7 +664,7 @@ public struct MainHistoryView: View {
                 handleReturnKey()
                 return nil
             }
-            // Cmd + 1..9 -> Quick select & paste item 1..9
+            // Cmd + 1..9 -> Quick select & copy item 1..9
             if flags == .command,
                let chars = event.charactersIgnoringModifiers,
                let num = Int(chars),
@@ -678,7 +672,7 @@ public struct MainHistoryView: View {
                 let items = visibleItems
                 let targetIdx = num - 1
                 if targetIdx < items.count {
-                    selectAndPasteItem(items[targetIdx])
+                    selectAndCopyItem(items[targetIdx])
                     return nil
                 }
             }

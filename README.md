@@ -46,7 +46,7 @@
 - **Lịch sử dịch trên Menu Bar & Cửa sổ nổi (`Option + Shift + T`)**:
   - Giao diện 1 dòng gọn gàng tương tự SuperClip, tìm kiếm tức thì không phân biệt dấu tiếng Việt trên cả bản gốc và bản dịch.
   - **Rê chuột (Hover)** vào từng dòng để xem bảng Preview hiển thị đầy đủ cả **Nội dung gốc / Ảnh gốc** lẫn **Bản dịch**.
-  - Chọn bằng chuột hoặc phím mũi tên `↑`/`↓` + `Enter` để Copy / Auto-Paste ngay bản dịch.
+  - Chọn bằng chuột hoặc phím mũi tên `↑`/`↓` + `Enter` (hoặc `⌘1–9`) để Copy nhanh bản dịch.
 - **Tự động kiểm tra & Cập nhật ứng dụng 1 chạm (`UpdateManager`)**:
   - Tự động kiểm tra phiên bản mới từ GitHub Releases khi khởi động và định kỳ mỗi 24 giờ, hoặc kiểm tra thủ công trong **Cài đặt -> Thông tin** / Menu chuột phải trên Menu Bar.
   - Hỗ trợ tải ngầm, giải nén, xác thực chữ ký và khởi động lại phiên bản mới chỉ với 1 nút bấm **"Cập nhật ngay"**.

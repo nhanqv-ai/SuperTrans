@@ -9,7 +9,7 @@ public struct SettingsView: View {
     @ObservedObject public var updateManager: UpdateManager = .shared
     @ObservedObject private var loc = LocalizationManager.shared
     public let hotKeyManager: any HotKeyManaging
-    public let autoPasteService: any AutoPasteServicing
+    public let accessibilityService: any AccessibilityPermissionServicing
     public var onDismiss: (() -> Void)?
 
     public enum SettingsTab: String, CaseIterable, Identifiable {
@@ -104,13 +104,13 @@ public struct SettingsView: View {
         storageManager: StorageManager,
         updateManager: UpdateManager = .shared,
         hotKeyManager: any HotKeyManaging = HotKeyManager.shared,
-        autoPasteService: any AutoPasteServicing = AutoPasteService.shared,
+        accessibilityService: any AccessibilityPermissionServicing = AccessibilityPermissionService.shared,
         onDismiss: (() -> Void)? = nil
     ) {
         self.storageManager = storageManager
         self.updateManager = updateManager
         self.hotKeyManager = hotKeyManager
-        self.autoPasteService = autoPasteService
+        self.accessibilityService = accessibilityService
         self.onDismiss = onDismiss
     }
 
@@ -129,11 +129,11 @@ public struct SettingsView: View {
         .frame(width: 510, height: 500)
         .background(Color(nsColor: .windowBackgroundColor))
         .onAppear {
-            isAccessibilityTrusted = autoPasteService.checkAccessibilityPermission()
+            isAccessibilityTrusted = accessibilityService.checkAccessibilityPermission()
             isCustomModelMode = !AppSettings.presetModels.contains(storageManager.settings.selectedModel)
         }
         .onReceive(NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)) { _ in
-            isAccessibilityTrusted = autoPasteService.checkAccessibilityPermission()
+            isAccessibilityTrusted = accessibilityService.checkAccessibilityPermission()
         }
         .onReceive(statusTimer) { tick in
             if selectedTab == .geminiAI {
@@ -537,57 +537,6 @@ public struct SettingsView: View {
                 ))
                 .toggleStyle(.checkbox)
                 .font(.system(size: 11.5))
-
-                Toggle(loc.tr(.autoPasteOnSelection), isOn: Binding(
-                    get: { storageManager.settings.autoPasteOnSelection },
-                    set: { val in
-                        var s = storageManager.settings
-                        s.autoPasteOnSelection = val
-                        storageManager.settings = s
-                        isAccessibilityTrusted = autoPasteService.checkAccessibilityPermission()
-                    }
-                ))
-                .toggleStyle(.checkbox)
-                .font(.system(size: 11.5))
-
-                HStack(spacing: 6) {
-                    Image(systemName: isAccessibilityTrusted ? "checkmark.circle.fill" : "exclamationmark.triangle")
-                        .font(.system(size: 10))
-                        .foregroundColor(isAccessibilityTrusted ? .green : .orange)
-
-                    Text("\(loc.tr(.accessibilityPermissionTitle)) \(isAccessibilityTrusted ? loc.tr(.accessibilityTrusted) : loc.tr(.accessibilityUntrusted))")
-                        .font(.system(size: 10.5))
-                        .foregroundColor(.secondary)
-
-                    Spacer()
-
-                    if !isAccessibilityTrusted {
-                        Button(isVi ? "Kiểm tra lại" : "Recheck") {
-                            isAccessibilityTrusted = autoPasteService.checkAccessibilityPermission()
-                        }
-                        .buttonStyle(.bordered)
-                        .controlSize(.small)
-                        .font(.system(size: 10.5))
-
-                        Button(isVi ? "Mở Cài đặt Hệ thống" : "System Settings") {
-                            if let url = URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_Accessibility") {
-                                NSWorkspace.shared.open(url)
-                            }
-                        }
-                        .buttonStyle(.bordered)
-                        .controlSize(.small)
-                        .font(.system(size: 10.5))
-
-                        Button(loc.tr(.grantPermissionButton)) {
-                            isAccessibilityTrusted = autoPasteService.resetAndRequestAccessibilityPermission()
-                        }
-                        .buttonStyle(.borderedProminent)
-                        .controlSize(.small)
-                        .font(.system(size: 10.5))
-                    }
-                }
-                .padding(.leading, 18)
-                .padding(.top, 2)
             }
         }
         .padding(9)
@@ -685,6 +634,43 @@ public struct SettingsView: View {
                 .controlSize(.small)
                 .fixedSize()
             }
+
+            // Accessibility status & permission actions for Quick Translate selection grab
+            HStack(spacing: 6) {
+                Image(systemName: isAccessibilityTrusted ? "checkmark.circle.fill" : "exclamationmark.triangle")
+                    .font(.system(size: 10))
+                    .foregroundColor(isAccessibilityTrusted ? .green : .orange)
+
+                Text("\(loc.tr(.accessibilityPermissionTitle)) \(isAccessibilityTrusted ? loc.tr(.accessibilityTrusted) : loc.tr(.accessibilityUntrusted))")
+                    .font(.system(size: 10.5))
+                    .foregroundColor(.secondary)
+
+                Spacer()
+
+                if !isAccessibilityTrusted {
+                    Button(isVi ? "Kiểm tra lại" : "Recheck") {
+                        isAccessibilityTrusted = accessibilityService.checkAccessibilityPermission()
+                    }
+                    .buttonStyle(.bordered)
+                    .controlSize(.small)
+                    .font(.system(size: 10.5))
+
+                    Button(isVi ? "Mở Cài đặt Hệ thống" : "System Settings") {
+                        accessibilityService.openAccessibilitySettings()
+                    }
+                    .buttonStyle(.bordered)
+                    .controlSize(.small)
+                    .font(.system(size: 10.5))
+
+                    Button(loc.tr(.grantPermissionButton)) {
+                        isAccessibilityTrusted = accessibilityService.resetAndRequestAccessibilityPermission()
+                    }
+                    .buttonStyle(.borderedProminent)
+                    .controlSize(.small)
+                    .font(.system(size: 10.5))
+                }
+            }
+            .padding(.bottom, 2)
 
             // Row 2: History Shortcut
             HStack(spacing: 8) {
