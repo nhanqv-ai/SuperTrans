@@ -43,7 +43,6 @@ public enum LKey: String, CaseIterable, Sendable {
     case popupTargetLanguage
     case popupCopyTranslation
     case popupCopied
-    case popupAutoPaste
     case popupRetranslate
     case popupPinTooltip
     case popupCloseTooltip
@@ -69,7 +68,6 @@ public enum LKey: String, CaseIterable, Sendable {
     case generalStartupSection
     case launchAtLogin
     case recordTranslationHistory
-    case autoPasteOnSelection
     case accessibilityPermissionTitle
     case accessibilityTrusted
     case accessibilityUntrusted
@@ -207,7 +205,6 @@ public final class LocalizationManager: ObservableObject, @unchecked Sendable {
         .popupTargetLanguage: "Dịch sang",
         .popupCopyTranslation: "Copy",
         .popupCopied: "Đã copy!",
-        .popupAutoPaste: "Dán đè (Cmd+Enter)",
         .popupRetranslate: "Dịch lại",
         .popupPinTooltip: "Ghim cửa sổ nổi không tự đóng",
         .popupCloseTooltip: "Đóng (Esc)",
@@ -230,8 +227,7 @@ public final class LocalizationManager: ObservableObject, @unchecked Sendable {
         .generalStartupSection: "Hệ thống & Hành vi",
         .launchAtLogin: "Khởi động cùng macOS",
         .recordTranslationHistory: "Lưu lịch sử các bản dịch",
-        .autoPasteOnSelection: "Tự động dán (Direct Auto-Paste) khi chọn bản dịch",
-        .accessibilityPermissionTitle: "Quyền Trợ năng (Cần cho lấy vùng chọn & Auto-Paste):",
+        .accessibilityPermissionTitle: "Quyền Trợ năng (Lấy vùng chọn):",
         .accessibilityTrusted: "Đã cấp quyền",
         .accessibilityUntrusted: "Chưa cấp quyền",
         .grantPermissionButton: "Cấp quyền...",
@@ -319,7 +315,6 @@ public final class LocalizationManager: ObservableObject, @unchecked Sendable {
         .popupTargetLanguage: "Translate to",
         .popupCopyTranslation: "Copy",
         .popupCopied: "Copied!",
-        .popupAutoPaste: "Auto-Paste (Cmd+Enter)",
         .popupRetranslate: "Re-translate",
         .popupPinTooltip: "Pin popup to keep on top",
         .popupCloseTooltip: "Close (Esc)",
@@ -342,8 +337,7 @@ public final class LocalizationManager: ObservableObject, @unchecked Sendable {
         .generalStartupSection: "System & Behavior",
         .launchAtLogin: "Launch at login",
         .recordTranslationHistory: "Save translation history",
-        .autoPasteOnSelection: "Direct Auto-Paste when selecting a translation",
-        .accessibilityPermissionTitle: "Accessibility Permission (Selection grab & Auto-Paste):",
+        .accessibilityPermissionTitle: "Accessibility (Selection grab):",
         .accessibilityTrusted: "Granted",
         .accessibilityUntrusted: "Not Granted",
         .grantPermissionButton: "Grant Permission...",

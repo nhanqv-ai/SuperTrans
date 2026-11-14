@@ -70,7 +70,6 @@ public struct AppSettings: Codable, Equatable, Sendable {
     public var translateHotKeyModifiers: UInt32
     public var historyHotKeyKeyCode: UInt32
     public var historyHotKeyModifiers: UInt32
-    public var autoPasteOnSelection: Bool
     public var recordHistory: Bool
     public var capacity: Int
     public var displayCapacity: Int
@@ -269,7 +268,6 @@ Rules:
         translateHotKeyModifiers: UInt32 = AppSettings.defaultTranslateHotKeyModifiers,
         historyHotKeyKeyCode: UInt32 = AppSettings.defaultHistoryHotKeyKeyCode,
         historyHotKeyModifiers: UInt32 = AppSettings.defaultHistoryHotKeyModifiers,
-        autoPasteOnSelection: Bool = true,
         recordHistory: Bool = true,
         capacity: Int = AppSettings.defaultCapacity,
         displayCapacity: Int = AppSettings.defaultDisplayCapacity,
@@ -300,7 +298,6 @@ Rules:
         self.translateHotKeyModifiers = translateHotKeyModifiers
         self.historyHotKeyKeyCode = historyHotKeyKeyCode
         self.historyHotKeyModifiers = historyHotKeyModifiers
-        self.autoPasteOnSelection = autoPasteOnSelection
         self.recordHistory = recordHistory
         self.capacity = max(10, min(capacity, 1000))
         self.displayCapacity = max(5, min(displayCapacity, 500))
@@ -334,7 +331,6 @@ Rules:
         self.translateHotKeyModifiers = try c.decodeIfPresent(UInt32.self, forKey: .translateHotKeyModifiers) ?? AppSettings.defaultTranslateHotKeyModifiers
         self.historyHotKeyKeyCode = try c.decodeIfPresent(UInt32.self, forKey: .historyHotKeyKeyCode) ?? AppSettings.defaultHistoryHotKeyKeyCode
         self.historyHotKeyModifiers = try c.decodeIfPresent(UInt32.self, forKey: .historyHotKeyModifiers) ?? AppSettings.defaultHistoryHotKeyModifiers
-        self.autoPasteOnSelection = try c.decodeIfPresent(Bool.self, forKey: .autoPasteOnSelection) ?? true
         self.recordHistory = try c.decodeIfPresent(Bool.self, forKey: .recordHistory) ?? true
         let cap = try c.decodeIfPresent(Int.self, forKey: .capacity) ?? AppSettings.defaultCapacity
         self.capacity = max(1, min(cap, 1000))

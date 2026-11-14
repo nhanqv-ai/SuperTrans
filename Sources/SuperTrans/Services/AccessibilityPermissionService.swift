@@ -1,23 +1,18 @@
 import AppKit
 import ApplicationServices
 
-public protocol AutoPasteServicing: AnyObject {
+public protocol AccessibilityPermissionServicing: AnyObject {
     var isAccessibilityTrusted: Bool { get }
     func checkAccessibilityPermission() -> Bool
+    @discardableResult
     func requestAccessibilityPermission() -> Bool
     @discardableResult
     func resetAndRequestAccessibilityPermission() -> Bool
     func openAccessibilitySettings()
-    @discardableResult
-    func pasteToActiveApp(
-        targetApp: NSRunningApplication?,
-        delay: TimeInterval,
-        completion: (() -> Void)?
-    ) -> Bool
 }
 
-public final class AutoPasteService: AutoPasteServicing, @unchecked Sendable {
-    public static let shared = AutoPasteService()
+public final class AccessibilityPermissionService: AccessibilityPermissionServicing, @unchecked Sendable {
+    public static let shared = AccessibilityPermissionService()
 
     public init() {}
 
@@ -57,34 +52,5 @@ public final class AutoPasteService: AutoPasteServicing, @unchecked Sendable {
         if let url = URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_Accessibility") {
             NSWorkspace.shared.open(url)
         }
-    }
-
-    @discardableResult
-    public func pasteToActiveApp(
-        targetApp: NSRunningApplication?,
-        delay: TimeInterval = 0.04,
-        completion: (() -> Void)? = nil
-    ) -> Bool {
-        guard AXIsProcessTrusted() else {
-            completion?()
-            return false
-        }
-
-        if let app = targetApp, !app.isTerminated {
-            _ = app.activate(options: [.activateIgnoringOtherApps])
-        }
-
-        DispatchQueue.main.asyncAfter(deadline: .now() + max(0.01, delay)) {
-            let vKeyCode: CGKeyCode = 0x09 // kVK_ANSI_V
-            if let keyDown = CGEvent(keyboardEventSource: nil, virtualKey: vKeyCode, keyDown: true),
-               let keyUp = CGEvent(keyboardEventSource: nil, virtualKey: vKeyCode, keyDown: false) {
-                keyDown.flags = .maskCommand
-                keyUp.flags = .maskCommand
-                keyDown.post(tap: .cghidEventTap)
-                keyUp.post(tap: .cghidEventTap)
-            }
-            completion?()
-        }
-        return true
     }
 }

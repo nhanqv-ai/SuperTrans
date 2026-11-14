@@ -33,7 +33,6 @@ public final class TranslationSessionController: NSObject, ObservableObject, AVS
     public let storageManager: StorageManager
     public let geminiClient: any GeminiTranslating
     public let pasteboardWriter: any PasteboardWriting
-    public let autoPasteService: any AutoPasteServicing
     public let previousAppTracker: any PreviousAppTracking
 
     public var onOpenSettings: (() -> Void)?
@@ -44,13 +43,11 @@ public final class TranslationSessionController: NSObject, ObservableObject, AVS
         storageManager: StorageManager,
         geminiClient: any GeminiTranslating = GeminiClient.shared,
         pasteboardWriter: any PasteboardWriting,
-        autoPasteService: any AutoPasteServicing = AutoPasteService.shared,
         previousAppTracker: any PreviousAppTracking = PreviousAppTracker.shared
     ) {
         self.storageManager = storageManager
         self.geminiClient = geminiClient
         self.pasteboardWriter = pasteboardWriter
-        self.autoPasteService = autoPasteService
         self.previousAppTracker = previousAppTracker
         self.targetLanguage = storageManager.settings.targetLanguage
         super.init()
@@ -296,25 +293,14 @@ public final class TranslationSessionController: NSObject, ObservableObject, AVS
         didCopyFeedback = true
         if shouldDismiss && !isPinned {
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.12) { [weak self] in
-                self?.onDismissPopup?()
+                guard let self = self else { return }
+                self.onDismissPopup?()
+                self.previousAppTracker.restoreFocusToPreviousApp()
             }
         } else {
             DispatchQueue.main.asyncAfter(deadline: .now() + 1.2) { [weak self] in
                 self?.didCopyFeedback = false
             }
-        }
-    }
-
-    public func autoPasteTranslationAndDismiss() {
-        guard case .completed(let translatedText, _, _) = state else { return }
-        _ = pasteboardWriter.writeText(translatedText)
-        if let id = currentHistoryItemId {
-            storageManager.incrementUsageCount(id: id)
-        }
-        let targetApp = previousAppTracker.previousApp
-        onDismissPopup?()
-        if autoPasteService.isAccessibilityTrusted {
-            _ = autoPasteService.pasteToActiveApp(targetApp: targetApp, delay: 0.04, completion: nil)
         }
     }
 
@@ -687,12 +673,12 @@ public final class CursorTranslationPanel: NSPanel, NSWindowDelegate {
                 self.dismiss()
                 return nil
             }
-            // Cmd + Return -> Save edit if in edit mode, otherwise Auto-Paste translation
+            // Cmd + Return -> Save edit if in edit mode, otherwise Copy translation & close
             if event.keyCode == 36 && flags == .command {
                 if self.sessionController.isEditingTranslation {
                     self.sessionController.saveEditedTranslationAndGlossary()
                 } else {
-                    self.sessionController.autoPasteTranslationAndDismiss()
+                    self.sessionController.copyTranslationAndDismiss(shouldDismiss: true)
                 }
                 return nil
             }

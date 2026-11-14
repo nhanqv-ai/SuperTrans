@@ -38,6 +38,7 @@ struct SuperTransTestRunner {
         testCircularShortcutNavigator()
         testUpdateManagerVersionAndReleaseParsing()
         testCustomPromptPresetsAndVisibility()
+        testLegacySettingsWithoutAutoPasteDecoding()
 
         print("--------------------------------------------------")
         print("SuperTrans Tests Completed: \(passed) passed, \(failed) failed.")
@@ -345,5 +346,22 @@ struct SuperTransTestRunner {
         settings.customPromptPresets[0].isHidden = true
         settings.selectFirstVisiblePrompt()
         assertEqual(settings.resolvedActivePromptId, "business", "Automatically falls back to first visible prompt ('business')")
+    }
+
+    static func testLegacySettingsWithoutAutoPasteDecoding() {
+        let legacyJSON = """
+        {
+          "targetLanguage": "en",
+          "autoPasteOnSelection": true,
+          "recordHistory": false,
+          "capacity": 250
+        }
+        """.data(using: .utf8)!
+
+        let decoded = try? JSONDecoder().decode(AppSettings.self, from: legacyJSON)
+        assertTrue(decoded != nil, "Legacy AppSettings JSON containing autoPasteOnSelection decodes cleanly")
+        assertEqual(decoded?.targetLanguage, "en", "Preserves targetLanguage from legacy JSON")
+        assertEqual(decoded?.recordHistory, false, "Preserves recordHistory from legacy JSON")
+        assertEqual(decoded?.capacity, 250, "Preserves capacity from legacy JSON")
     }
 }

@@ -3,6 +3,7 @@ import AppKit
 public protocol PreviousAppTracking: AnyObject {
     var previousApp: NSRunningApplication? { get }
     func captureFrontmostApplication()
+    func restoreFocusToPreviousApp()
     func clear()
 }
 
@@ -28,6 +29,11 @@ public final class PreviousAppTracker: PreviousAppTracking, @unchecked Sendable 
             _previousApp = frontmost
             lock.unlock()
         }
+    }
+
+    public func restoreFocusToPreviousApp() {
+        guard let app = previousApp, !app.isTerminated else { return }
+        _ = app.activate(options: [.activateIgnoringOtherApps])
     }
 
     public func clear() {

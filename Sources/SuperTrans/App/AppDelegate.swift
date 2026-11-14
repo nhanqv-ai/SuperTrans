@@ -54,7 +54,6 @@ public final class AppDelegate: NSObject, NSApplicationDelegate {
             storageManager: storageManager,
             geminiClient: GeminiClient.shared,
             pasteboardWriter: pasteboardWriter,
-            autoPasteService: AutoPasteService.shared,
             previousAppTracker: PreviousAppTracker.shared
         )
         sessionController.onOpenSettings = { [weak self] in
@@ -68,7 +67,6 @@ public final class AppDelegate: NSObject, NSApplicationDelegate {
         let historyView = MainHistoryView(
             storageManager: storageManager,
             pasteboardWriter: pasteboardWriter,
-            autoPasteService: AutoPasteService.shared,
             previousAppTracker: PreviousAppTracker.shared,
             onDismiss: { [weak self] in
                 self?.statusItemManager.dismissAll()
