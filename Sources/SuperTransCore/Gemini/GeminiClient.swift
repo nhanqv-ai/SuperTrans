@@ -91,22 +91,33 @@ public extension GeminiTranslating {
 public final class GeminiClient: GeminiTranslating, @unchecked Sendable {
     public static let shared = GeminiClient()
 
+    public static let defaultTextTimeout: TimeInterval = 8.0
+    public static let defaultImageTimeout: TimeInterval = 15.0
+
     private let session: URLSession
     private let keyRotator: APIKeyRotator
+    public let textTimeout: TimeInterval
+    public let imageTimeout: TimeInterval
 
     public init(
         session: URLSession? = nil,
-        keyRotator: APIKeyRotator = .shared
+        keyRotator: APIKeyRotator = .shared,
+        textTimeout: TimeInterval = GeminiClient.defaultTextTimeout,
+        imageTimeout: TimeInterval = GeminiClient.defaultImageTimeout
     ) {
         if let session = session {
             self.session = session
         } else {
             let config = URLSessionConfiguration.ephemeral
-            config.timeoutIntervalForRequest = 35
-            config.timeoutIntervalForResource = 60
+            config.timeoutIntervalForRequest = max(textTimeout, imageTimeout)
+            config.timeoutIntervalForResource = max(textTimeout, imageTimeout) * 2
+            config.waitsForConnectivity = false
+            config.httpMaximumConnectionsPerHost = 4
             self.session = URLSession(configuration: config)
         }
         self.keyRotator = keyRotator
+        self.textTimeout = textTimeout
+        self.imageTimeout = imageTimeout
     }
 
     public func translateText(
@@ -137,7 +148,8 @@ public final class GeminiClient: GeminiTranslating, @unchecked Sendable {
         return try await executeWithKeyRotation(
             parts: parts,
             systemInstruction: systemInstruction,
-            settings: settings
+            settings: settings,
+            requestTimeout: textTimeout
         )
     }
 
@@ -175,7 +187,8 @@ public final class GeminiClient: GeminiTranslating, @unchecked Sendable {
         return try await executeWithKeyRotation(
             parts: parts,
             systemInstruction: systemInstruction,
-            settings: settings
+            settings: settings,
+            requestTimeout: imageTimeout
         )
     }
 
@@ -200,7 +213,8 @@ public final class GeminiClient: GeminiTranslating, @unchecked Sendable {
                 apiKey: trimmedKey,
                 model: cleanModel,
                 parts: parts,
-                systemInstruction: nil
+                systemInstruction: nil,
+                timeoutInterval: textTimeout
             )
             keyRotator.markSuccess(key: trimmedKey)
             return .success(output)
@@ -223,10 +237,49 @@ public final class GeminiClient: GeminiTranslating, @unchecked Sendable {
         }
     }
 
+    /// Returns the ordered model attempt chain: primary selected model first, followed by fast backup model if overloaded/timed out.
+    public static func candidateModels(for selectedModel: String) -> [String] {
+        let primary = selectedModel.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+            ? AppSettings.defaultModel
+            : selectedModel.trimmingCharacters(in: .whitespacesAndNewlines)
+
+        let backup = (primary.caseInsensitiveCompare(AppSettings.fallbackModel) == .orderedSame)
+            ? AppSettings.defaultModel
+            : AppSettings.fallbackModel
+
+        if primary.caseInsensitiveCompare(backup) == .orderedSame {
+            return [primary]
+        }
+        return [primary, backup]
+    }
+
+    /// Builds model-appropriate minimal thinking configuration to eliminate hidden reasoning latency.
+    public static func thinkingConfig(for model: String) -> [String: Any]? {
+        let lowerModel = model.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        if lowerModel.contains("tts") ||
+           lowerModel.contains("image") ||
+           lowerModel.contains("transcribe") ||
+           lowerModel.contains("embedding") ||
+           lowerModel.contains("computer-use") {
+            return nil
+        }
+        if lowerModel.contains("gemini-3.7") || lowerModel.contains("gemini-3.8") || lowerModel.contains("gemini-4") {
+            return ["thinkingLevel": "LOW"]
+        }
+        if lowerModel.contains("gemini-3") {
+            return ["thinkingLevel": "MINIMAL"]
+        }
+        if lowerModel.contains("gemini-2.5") {
+            return ["thinkingBudget": 0]
+        }
+        return nil
+    }
+
     private func executeWithKeyRotation(
         parts: [[String: Any]],
         systemInstruction: String?,
-        settings: AppSettings
+        settings: AppSettings,
+        requestTimeout: TimeInterval
     ) async throws -> GeminiTranslationResponse {
         let validKeys = settings.validAPIKeys
         guard !validKeys.isEmpty else {
@@ -242,58 +295,89 @@ public final class GeminiClient: GeminiTranslating, @unchecked Sendable {
             )
         }
 
-        let model = settings.selectedModel.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
-            ? AppSettings.defaultModel
-            : settings.selectedModel.trimmingCharacters(in: .whitespacesAndNewlines)
+        let modelsToTry = Self.candidateModels(for: settings.selectedModel)
 
         var lastRateLimitMessage: String?
         var lastInvalidKeyMessage: String?
         var lastOtherError: GeminiError?
 
-        for apiKey in candidateKeys {
-            do {
-                let text = try await performSingleRequest(
-                    apiKey: apiKey,
-                    model: model,
-                    parts: parts,
-                    systemInstruction: systemInstruction
-                )
-                keyRotator.markSuccess(key: apiKey)
-                return GeminiTranslationResponse(
-                    translatedText: text,
-                    modelUsed: model,
-                    keyUsedMasked: APIKeyRotator.maskKey(apiKey)
-                )
-            } catch let error as GeminiError {
-                switch error {
-                case .quotaLimited(let msg, let retryAfter, let isDaily):
-                    keyRotator.markRateLimited(key: apiKey, cooldownSeconds: retryAfter, isDailyQuota: isDaily)
-                    lastRateLimitMessage = msg
+        modelLoop: for (modelIndex, model) in modelsToTry.enumerated() {
+            var shouldFallbackToNextModel = false
+
+            for apiKey in candidateKeys {
+                // Skip keys that were marked invalid in an earlier iteration
+                if case .invalid = keyRotator.status(for: apiKey) {
                     continue
-                case .httpError(let code, let msg) where code == 429 || code == 503:
-                    keyRotator.markRateLimited(key: apiKey, cooldownSeconds: 60)
-                    lastRateLimitMessage = msg
-                    continue
-                case .rateLimitExhaustedAllKeys(let msg):
-                    keyRotator.markRateLimited(key: apiKey, cooldownSeconds: 60)
-                    lastRateLimitMessage = msg
-                    continue
-                case .invalidAPIKey(let msg):
-                    keyRotator.markInvalid(key: apiKey, reason: msg)
-                    lastInvalidKeyMessage = msg
-                    continue
-                default:
-                    lastOtherError = error
-                    if let desc = error.errorDescription?.lowercased(),
-                       desc.contains("quota") || desc.contains("rate") || desc.contains("exhausted") {
-                        keyRotator.markRateLimited(key: apiKey, cooldownSeconds: 60)
-                        lastRateLimitMessage = error.errorDescription
-                        continue
-                    }
-                    throw error
                 }
-            } catch {
-                throw GeminiError.networkError(error.localizedDescription)
+
+                do {
+                    let text = try await performSingleRequest(
+                        apiKey: apiKey,
+                        model: model,
+                        parts: parts,
+                        systemInstruction: systemInstruction,
+                        timeoutInterval: requestTimeout
+                    )
+                    keyRotator.markSuccess(key: apiKey)
+                    return GeminiTranslationResponse(
+                        translatedText: text,
+                        modelUsed: model,
+                        keyUsedMasked: APIKeyRotator.maskKey(apiKey)
+                    )
+                } catch let error as GeminiError {
+                    switch error {
+                    case .quotaLimited(let msg, let retryAfter, let isDaily):
+                        keyRotator.markRateLimited(key: apiKey, cooldownSeconds: retryAfter, isDailyQuota: isDaily)
+                        lastRateLimitMessage = msg
+                        continue
+                    case .httpError(let code, let msg) where code == 429:
+                        keyRotator.markRateLimited(key: apiKey, cooldownSeconds: 60)
+                        lastRateLimitMessage = msg
+                        continue
+                    case .httpError(let code, _) where code == 500 || code == 502 || code == 503 || code == 504:
+                        // Server-side model overload (e.g. 503 High Demand): do NOT penalize the user's API key;
+                        // immediately switch to the backup model if available.
+                        lastOtherError = error
+                        shouldFallbackToNextModel = true
+                        break
+                    case .rateLimitExhaustedAllKeys(let msg):
+                        keyRotator.markRateLimited(key: apiKey, cooldownSeconds: 60)
+                        lastRateLimitMessage = msg
+                        continue
+                    case .invalidAPIKey(let msg):
+                        keyRotator.markInvalid(key: apiKey, reason: msg)
+                        lastInvalidKeyMessage = msg
+                        continue
+                    default:
+                        lastOtherError = error
+                        if let desc = error.errorDescription?.lowercased(),
+                           desc.contains("quota") || desc.contains("rate") || desc.contains("exhausted") {
+                            keyRotator.markRateLimited(key: apiKey, cooldownSeconds: 60)
+                            lastRateLimitMessage = error.errorDescription
+                            continue
+                        }
+                        throw error
+                    }
+                } catch let urlError as URLError where urlError.code == .timedOut {
+                    // Model cluster stalled beyond requestTimeout: do NOT penalize API key; fail over to backup model
+                    lastOtherError = .networkError(urlError.localizedDescription)
+                    shouldFallbackToNextModel = true
+                    break
+                } catch {
+                    let nsErr = error as NSError
+                    if nsErr.domain == NSURLErrorDomain && nsErr.code == NSURLErrorTimedOut {
+                        lastOtherError = .networkError(error.localizedDescription)
+                        shouldFallbackToNextModel = true
+                        break
+                    }
+                    throw GeminiError.networkError(error.localizedDescription)
+                }
+            }
+
+            if shouldFallbackToNextModel && modelIndex + 1 < modelsToTry.count {
+                continue modelLoop
+            } else {
+                break modelLoop
             }
         }
 
@@ -310,7 +394,9 @@ public final class GeminiClient: GeminiTranslating, @unchecked Sendable {
         apiKey: String,
         model: String,
         parts: [[String: Any]],
-        systemInstruction: String?
+        systemInstruction: String?,
+        timeoutInterval: TimeInterval,
+        includeThinkingConfig: Bool = true
     ) async throws -> String {
         let encodedModel = model.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed) ?? model
         var components = URLComponents(string: "https://generativelanguage.googleapis.com/v1beta/models/\(encodedModel):generateContent")
@@ -323,12 +409,8 @@ public final class GeminiClient: GeminiTranslating, @unchecked Sendable {
         var genConfig: [String: Any] = [
             "temperature": 0.2
         ]
-        // Disable thinking overhead on non-lite Gemini models for instant translation response
-        let lowerModel = model.lowercased()
-        if !lowerModel.contains("lite") && (lowerModel.contains("gemini-3") || lowerModel.contains("gemini-2.5")) {
-            genConfig["thinkingConfig"] = [
-                "thinkingBudget": 0
-            ]
+        if includeThinkingConfig, let thinkingCfg = Self.thinkingConfig(for: model) {
+            genConfig["thinkingConfig"] = thinkingCfg
         }
 
         var requestBody: [String: Any] = [
@@ -353,6 +435,7 @@ public final class GeminiClient: GeminiTranslating, @unchecked Sendable {
 
         var request = URLRequest(url: url)
         request.httpMethod = "POST"
+        request.timeoutInterval = timeoutInterval
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         request.httpBody = bodyData
 
@@ -363,6 +446,18 @@ public final class GeminiClient: GeminiTranslating, @unchecked Sendable {
 
         if !(200...299).contains(httpResponse.statusCode) {
             let apiErrorMessage = Self.extractErrorMessage(from: data) ?? HTTPURLResponse.localizedString(forStatusCode: httpResponse.statusCode)
+            // Forward-compatibility guard: if a custom/future model rejects thinkingConfig with HTTP 400, retry once cleanly without it
+            if httpResponse.statusCode == 400 && includeThinkingConfig && Self.thinkingConfig(for: model) != nil &&
+               apiErrorMessage.lowercased().contains("thinking") {
+                return try await performSingleRequest(
+                    apiKey: apiKey,
+                    model: model,
+                    parts: parts,
+                    systemInstruction: systemInstruction,
+                    timeoutInterval: timeoutInterval,
+                    includeThinkingConfig: false
+                )
+            }
             if httpResponse.statusCode == 429 || apiErrorMessage.lowercased().contains("resource_exhausted") || apiErrorMessage.lowercased().contains("quota") {
                 let quotaInfo = Self.extractQuotaLimitMetadata(from: data, httpResponse: httpResponse, fallbackMessage: apiErrorMessage)
                 throw GeminiError.quotaLimited(
