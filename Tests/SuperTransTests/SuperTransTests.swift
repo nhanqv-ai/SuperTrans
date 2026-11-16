@@ -40,6 +40,7 @@ struct SuperTransTestRunner {
         testCustomPromptPresetsAndVisibility()
         testLegacySettingsWithoutAutoPasteDecoding()
         testFastLatencyOptimizationsAndFallback()
+        testGlossaryCSVExportAndImport()
 
         print("--------------------------------------------------")
         print("SuperTrans Tests Completed: \(passed) passed, \(failed) failed.")
@@ -550,5 +551,37 @@ struct SuperTransTestRunner {
         assertEqual(fallbackResp?.translatedText, "Xin chào từ model dự phòng", "Returned translation from fallback model")
         assertEqual(fallbackResp?.modelUsed, "gemini-3.1-flash-lite", "Recorded fallback modelUsed accurately")
         assertEqual(rotator.status(for: testKey), .active, "API key remains .active and is NOT rate-limited on HTTP 503")
+    }
+
+    static func testGlossaryCSVExportAndImport() {
+        // 1. Empty glossary exports UTF-8 BOM + header row only (acts as CSV template)
+        let emptyCSV = GlossaryCSVCodec.encode([], includeBOM: true)
+        assertEqual(emptyCSV, "\u{FEFF}source_term,target_term\n", "Empty glossary exports UTF-8 BOM + header line only")
+        let decodedEmpty = GlossaryCSVCodec.decode(emptyCSV)
+        assertEqual(decodedEmpty.count, 0, "Decoding header-only CSV template returns 0 entries without importing header")
+
+        // 2. Populated glossary with commas, quotes, Vietnamese & Japanese terms round-trips cleanly
+        let entries = [
+            GlossaryEntry(sourceTerm: "代表", targetTerm: "số tổng đài"),
+            GlossaryEntry(sourceTerm: "idempotency, key", targetTerm: "khoá \"chống trùng\""),
+            GlossaryEntry(sourceTerm: "pull request", targetTerm: "yêu cầu gộp nhánh")
+        ]
+        let exportedCSV = GlossaryCSVCodec.encode(entries, includeBOM: true)
+        assertTrue(exportedCSV.hasPrefix("\u{FEFF}source_term,target_term\n"), "Populated CSV begins with BOM + header")
+        assertTrue(exportedCSV.contains("\"idempotency, key\",\"khoá \"\"chống trùng\"\"\""), "RFC 4180 escapes commas and quotes")
+
+        let decoded = GlossaryCSVCodec.decode(exportedCSV)
+        assertEqual(decoded.count, 3, "Decodes all 3 glossary entries while skipping header")
+        assertEqual(decoded[0].sourceTerm, "代表", "Preserves CJK source term")
+        assertEqual(decoded[0].targetTerm, "số tổng đài", "Preserves Vietnamese target term")
+        assertEqual(decoded[1].sourceTerm, "idempotency, key", "Unescapes comma inside quoted CSV field")
+        assertEqual(decoded[1].targetTerm, "khoá \"chống trùng\"", "Unescapes doubled quotes inside CSV field")
+
+        // 3. Semicolon CSV (Excel locale save) also imports cleanly
+        let semicolonCSV = "source_term;target_term\nwebhook;điểm cuối nhận sự kiện\n"
+        let decodedSemi = GlossaryCSVCodec.decode(semicolonCSV)
+        assertEqual(decodedSemi.count, 1, "Supports semicolon-delimited CSV from regional Excel locales")
+        assertEqual(decodedSemi.first?.sourceTerm, "webhook", "Parses semicolon source term")
+        assertEqual(decodedSemi.first?.targetTerm, "điểm cuối nhận sự kiện", "Parses semicolon target term")
     }
 }

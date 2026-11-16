@@ -71,7 +71,7 @@ public struct SettingsView: View {
     @State private var renameProjectDraft: String = ""
     @State private var showingVerifiedExamplesPopover: Bool = false
     @State private var showingPinnedItemsPopover: Bool = false
-    @State private var didCopyGlossaryFeedback: Bool = false
+    @State private var glossaryStatusMessage: String? = nil
     @State private var copiedGlossaryEntryId: UUID? = nil
     @State private var showingClearGlossaryConfirmation: Bool = false
     @State private var showingAPIKeyGuidePopover: Bool = false
@@ -2587,69 +2587,46 @@ public struct SettingsView: View {
                 HStack(spacing: 6) {
                     Text(isVi ? "Từ điển Thuật ngữ của Dự án" : "Project Glossary")
                         .font(.system(size: 12, weight: .semibold))
+                        .lineLimit(1)
                     Spacer()
 
-                    Button(action: pasteBulkGlossaryFromClipboard) {
+                    if let statusMsg = glossaryStatusMessage {
                         HStack(spacing: 3) {
-                            Image(systemName: "doc.on.clipboard")
+                            Image(systemName: "checkmark.circle.fill")
                                 .font(.system(size: 9.5))
-                            Text(isVi ? "Dán nhanh" : "Paste")
+                                .foregroundColor(.green)
+                            Text(statusMsg)
+                                .font(.system(size: 10, weight: .medium))
+                                .foregroundColor(.green)
+                                .lineLimit(1)
+                        }
+                    }
+
+                    Button(action: importGlossaryFromFilePanel) {
+                        HStack(spacing: 3) {
+                            Image(systemName: "square.and.arrow.down")
+                                .font(.system(size: 9.5))
+                            Text(isVi ? "Nhập từ điển" : "Import")
                                 .font(.system(size: 10, weight: .medium))
                         }
                     }
                     .buttonStyle(.bordered)
                     .controlSize(.mini)
-                    .help(isVi ? "Dán nhiều cặp thuật ngữ từ Clipboard (mỗi dòng dạng: từ_gốc -> nghĩa_đích hoặc phân tách bằng Tab)" : "Paste multiple glossary pairs from Clipboard (one per line: source -> target or Tab-separated)")
+                    .help(isVi ? "Nhập từ điển thuật ngữ chuyên ngành từ tệp CSV (cột: source_term,target_term)" : "Import glossary terms from a CSV file (columns: source_term,target_term)")
 
-                    let otherProjectsWithGlossary = storageManager.projects.filter { $0.id != activeProj.id && !$0.glossary.isEmpty }
-
-                    Menu {
-                        Button(isVi ? "Nhập từ điển từ tệp (.tsv / .csv / .txt)..." : "Import Glossary from File (.tsv / .csv / .txt)...") {
-                            importGlossaryFromFilePanel()
+                    Button(action: exportGlossaryToFilePanel) {
+                        HStack(spacing: 3) {
+                            Image(systemName: "square.and.arrow.up")
+                                .font(.system(size: 9.5))
+                            Text(isVi ? "Xuất từ điển" : "Export")
+                                .font(.system(size: 10, weight: .medium))
                         }
-                        if !activeProj.glossary.isEmpty {
-                            Button(isVi ? "Xuất từ điển ra tệp (.tsv)..." : "Export Glossary to File (.tsv)...") {
-                                exportGlossaryToFilePanel()
-                            }
-                        }
-                        if !otherProjectsWithGlossary.isEmpty {
-                            Divider()
-                            Menu(isVi ? "Gộp thuật ngữ từ dự án khác" : "Merge Terms from Another Project") {
-                                ForEach(otherProjectsWithGlossary) { otherProj in
-                                    Button("\(otherProj.name) (\(otherProj.glossary.count))") {
-                                        for entry in otherProj.glossary {
-                                            storageManager.addOrUpdateGlossaryEntry(
-                                                projectId: activeProj.id,
-                                                sourceTerm: entry.sourceTerm,
-                                                targetTerm: entry.targetTerm
-                                            )
-                                        }
-                                    }
-                                }
-                            }
-                        }
-                    } label: {
-                        Image(systemName: "square.and.arrow.up.on.square")
-                            .font(.system(size: 9.5))
                     }
-                    .menuStyle(.borderedButton)
+                    .buttonStyle(.bordered)
                     .controlSize(.mini)
-                    .fixedSize()
-                    .help(isVi ? "Nhập hoặc xuất từ điển thuật ngữ bằng tệp (.tsv / .csv / .txt)" : "Import or export glossary file (.tsv / .csv / .txt)")
-
-                    if !activeProj.glossary.isEmpty {
-                        Button(action: copyGlossaryToClipboard) {
-                            HStack(spacing: 3) {
-                                Image(systemName: didCopyGlossaryFeedback ? "checkmark" : "doc.on.doc")
-                                    .font(.system(size: 9.5))
-                                Text(didCopyGlossaryFeedback ? (isVi ? "Đã chép" : "Copied") : (isVi ? "Sao chép" : "Copy"))
-                                    .font(.system(size: 10, weight: .medium))
-                            }
-                        }
-                        .buttonStyle(.bordered)
-                        .controlSize(.mini)
-                        .help(isVi ? "Sao chép toàn bộ từ điển thuật ngữ của dự án này vào Clipboard" : "Copy all glossary entries of this project to Clipboard")
-                    }
+                    .help(activeProj.glossary.isEmpty
+                          ? (isVi ? "Xuất tệp CSV mẫu (chỉ gồm dòng tiêu đề source_term,target_term) để điền từ điển chuyên ngành" : "Export a CSV template containing the source_term,target_term header")
+                          : (isVi ? "Xuất toàn bộ \(activeProj.glossary.count) thuật ngữ của dự án ra tệp CSV (kèm dòng tiêu đề)" : "Export all \(activeProj.glossary.count) glossary terms to CSV (including header)"))
 
                     if activeProj.glossary.count > 1 {
                         Button(action: {
@@ -2687,33 +2664,6 @@ public struct SettingsView: View {
                             }
                             Button(isVi ? "Hủy" : "Cancel", role: .cancel) {}
                         }
-                    }
-
-                    if activeProj.glossary.count >= 3 {
-                        HStack(spacing: 4) {
-                            Image(systemName: "magnifyingglass")
-                                .font(.system(size: 9.5))
-                                .foregroundColor(.secondary)
-                            TextField(isVi ? "Lọc thuật ngữ..." : "Filter terms...", text: $glossarySearchQuery)
-                                .textFieldStyle(.plain)
-                                .font(.system(size: 10.5))
-                                .frame(width: 115)
-                            if !glossarySearchQuery.isEmpty {
-                                Button(action: { glossarySearchQuery = "" }) {
-                                    Image(systemName: "xmark.circle.fill")
-                                        .font(.system(size: 9.5))
-                                        .foregroundColor(.secondary)
-                                }
-                                .buttonStyle(.plain)
-                            }
-                        }
-                        .padding(.horizontal, 6)
-                        .padding(.vertical, 2)
-                        .background(RoundedRectangle(cornerRadius: 4).fill(Color(nsColor: .textBackgroundColor)))
-                        .overlay(
-                            RoundedRectangle(cornerRadius: 4)
-                                .stroke(Color(nsColor: .separatorColor), lineWidth: 0.6)
-                        )
                     }
                 }
 
@@ -2778,6 +2728,32 @@ public struct SettingsView: View {
                         $0.sourceTerm.lowercased().contains(q) || $0.targetTerm.lowercased().contains(q)
                     }
                 }()
+
+                if activeProj.glossary.count >= 3 {
+                    HStack(spacing: 5) {
+                        Image(systemName: "magnifyingglass")
+                            .font(.system(size: 9.5))
+                            .foregroundColor(.secondary)
+                        TextField(isVi ? "Lọc nhanh thuật ngữ đã nhập..." : "Filter glossary terms...", text: $glossarySearchQuery)
+                            .textFieldStyle(.plain)
+                            .font(.system(size: 10.5))
+                        if !glossarySearchQuery.isEmpty {
+                            Button(action: { glossarySearchQuery = "" }) {
+                                Image(systemName: "xmark.circle.fill")
+                                    .font(.system(size: 9.5))
+                                    .foregroundColor(.secondary)
+                            }
+                            .buttonStyle(.plain)
+                        }
+                    }
+                    .padding(.horizontal, 7)
+                    .padding(.vertical, 3)
+                    .background(RoundedRectangle(cornerRadius: 4).fill(Color(nsColor: .textBackgroundColor)))
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 4)
+                            .stroke(Color(nsColor: .separatorColor), lineWidth: 0.6)
+                    )
+                }
 
                 ScrollView {
                     if activeProj.glossary.isEmpty {
@@ -2948,65 +2924,56 @@ public struct SettingsView: View {
         newGlossaryTargetInput = ""
     }
 
-    private func pasteBulkGlossaryFromClipboard() {
-        guard let raw = NSPasteboard.general.string(forType: .string) else { return }
-        importGlossaryRawString(raw)
-    }
-
-    private func importGlossaryRawString(_ raw: String) {
-        let lines = raw.components(separatedBy: .newlines)
-        let projId = storageManager.activeProject.id
-        let separators = ["->", "=>", "\t", " = ", " : ", ","]
-        for line in lines {
-            let trimmedLine = line.trimmingCharacters(in: .whitespacesAndNewlines)
-            guard !trimmedLine.isEmpty else { continue }
-            for sep in separators {
-                if let range = trimmedLine.range(of: sep) {
-                    let src = String(trimmedLine[..<range.lowerBound]).trimmingCharacters(in: .whitespacesAndNewlines)
-                    let dst = String(trimmedLine[range.upperBound...]).trimmingCharacters(in: .whitespacesAndNewlines)
-                    if !src.isEmpty && !dst.isEmpty {
-                        storageManager.addOrUpdateGlossaryEntry(projectId: projId, sourceTerm: src, targetTerm: dst)
-                        break
-                    }
-                }
-            }
-        }
-    }
-
     private func importGlossaryFromFilePanel() {
         NSApp.activate(ignoringOtherApps: true)
         let panel = NSOpenPanel()
-        panel.allowedContentTypes = [.plainText, .tabSeparatedText, .commaSeparatedText]
+        panel.allowedContentTypes = [.commaSeparatedText, .tabSeparatedText, .plainText]
         panel.allowsMultipleSelection = false
         panel.canChooseDirectories = false
         panel.canChooseFiles = true
         guard panel.runModal() == .OK, let url = panel.url,
               let content = try? String(contentsOf: url, encoding: .utf8) else { return }
-        importGlossaryRawString(content)
+
+        let pairs = GlossaryCSVCodec.decode(content)
+        let projId = storageManager.activeProject.id
+        for pair in pairs {
+            storageManager.addOrUpdateGlossaryEntry(
+                projectId: projId,
+                sourceTerm: pair.sourceTerm,
+                targetTerm: pair.targetTerm
+            )
+        }
+        showGlossaryStatus(
+            pairs.isEmpty
+                ? (isVi ? "Tệp chưa có thuật ngữ" : "No terms found")
+                : (isVi ? "Đã nhập \(pairs.count) từ" : "Imported \(pairs.count) terms")
+        )
     }
 
     private func exportGlossaryToFilePanel() {
         let proj = storageManager.activeProject
-        guard !proj.glossary.isEmpty else { return }
         NSApp.activate(ignoringOtherApps: true)
         let panel = NSSavePanel()
-        panel.allowedContentTypes = [.tabSeparatedText, .plainText]
-        panel.nameFieldStringValue = "SuperTrans-Glossary-\(proj.name).tsv"
+        panel.allowedContentTypes = [.commaSeparatedText]
+        let sanitizedName = proj.name
+            .components(separatedBy: CharacterSet(charactersIn: "/\\?%*|\"<>:"))
+            .joined(separator: "-")
+        panel.nameFieldStringValue = "SuperTrans-Glossary-\(sanitizedName).csv"
         panel.canCreateDirectories = true
         guard panel.runModal() == .OK, let url = panel.url else { return }
-        let formatted = proj.glossary.map { "\($0.sourceTerm)\t\($0.targetTerm)" }.joined(separator: "\n")
-        try? formatted.write(to: url, atomically: true, encoding: .utf8)
+
+        let csvContent = GlossaryCSVCodec.encode(proj.glossary, includeBOM: true)
+        if (try? csvContent.write(to: url, atomically: true, encoding: .utf8)) != nil {
+            showGlossaryStatus(isVi ? "Đã xuất CSV" : "Exported CSV")
+        }
     }
 
-    private func copyGlossaryToClipboard() {
-        let entries = storageManager.activeProject.glossary
-        guard !entries.isEmpty else { return }
-        let formatted = entries.map { "\($0.sourceTerm)\t\($0.targetTerm)" }.joined(separator: "\n")
-        NSPasteboard.general.clearContents()
-        NSPasteboard.general.setString(formatted, forType: .string)
-        didCopyGlossaryFeedback = true
-        DispatchQueue.main.asyncAfter(deadline: .now() + 1.4) {
-            didCopyGlossaryFeedback = false
+    private func showGlossaryStatus(_ message: String) {
+        glossaryStatusMessage = message
+        DispatchQueue.main.asyncAfter(deadline: .now() + 2.2) {
+            if glossaryStatusMessage == message {
+                glossaryStatusMessage = nil
+            }
         }
     }
 
