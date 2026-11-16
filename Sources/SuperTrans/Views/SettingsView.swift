@@ -2759,11 +2759,12 @@ public struct SettingsView: View {
                     if activeProj.glossary.isEmpty {
                         VStack(spacing: 4) {
                             Text(isVi
-                                 ? "Chưa có thuật ngữ nào. Bạn có thể thêm tại đây hoặc bấm biểu tượng cây bút sửa trực tiếp ngay trên Popup dịch."
-                                 : "No glossary terms yet. Add terms here or via the edit icon on the translation popup.")
+                                 ? "Chưa có thuật ngữ nào. Chỉ thêm những từ chuyên ngành mà AI dịch chưa chuẩn; tránh thêm quá nhiều từ thông dụng gây tốn token API."
+                                 : "No glossary terms yet. Only add domain-specific terms that AI mistranslates; avoid adding common words to save API tokens.")
                                 .font(.system(size: 10.5))
                                 .foregroundColor(.secondary)
                                 .multilineTextAlignment(.center)
+                                .padding(.horizontal, 16)
                                 .padding(.vertical, 18)
                         }
                         .frame(maxWidth: .infinity)
