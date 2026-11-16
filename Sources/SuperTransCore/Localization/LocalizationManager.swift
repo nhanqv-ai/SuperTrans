@@ -62,7 +62,6 @@ public enum LKey: String, CaseIterable, Sendable {
     case tabGeneral
     case tabGeminiAI
     case tabShortcuts
-    case tabIgnoredApps
 
     // Settings - General
     case generalStartupSection
@@ -112,13 +111,6 @@ public enum LKey: String, CaseIterable, Sendable {
     case pressShortcutPrompt
     case recordShortcutButton
     case resetDefaultShortcutButton
-
-    // Settings - Ignored Apps
-    case ignoredAppsDescription
-    case addRunningAppButton
-    case addBundleIdPlaceholder
-    case removeIgnoredAppButton
-    case noIgnoredApps
 }
 
 public final class LocalizationManager: ObservableObject, @unchecked Sendable {
@@ -222,7 +214,6 @@ public final class LocalizationManager: ObservableObject, @unchecked Sendable {
         .tabGeneral: "Chung",
         .tabGeminiAI: "Gemini AI",
         .tabShortcuts: "Phím tắt",
-        .tabIgnoredApps: "Ứng dụng bỏ qua",
 
         .generalStartupSection: "Hệ thống & Hành vi",
         .launchAtLogin: "Khởi động cùng macOS",
@@ -268,13 +259,7 @@ public final class LocalizationManager: ObservableObject, @unchecked Sendable {
         .historyShortcutDesc: "Mở cửa sổ nổi danh sách lịch sử các bản dịch ngay cạnh con trỏ chuột.",
         .pressShortcutPrompt: "Nhấn tổ hợp phím mới...",
         .recordShortcutButton: "Đổi phím tắt",
-        .resetDefaultShortcutButton: "Mặc định",
-
-        .ignoredAppsDescription: "Không tự động kích hoạt dịch khi sao chép từ các ứng dụng trong danh sách này (ví dụ: trình quản lý mật khẩu, Terminal...).",
-        .addRunningAppButton: "Thêm từ ứng dụng đang chạy",
-        .addBundleIdPlaceholder: "Nhập Bundle ID hoặc tên ứng dụng...",
-        .removeIgnoredAppButton: "Xóa",
-        .noIgnoredApps: "Chưa có ứng dụng nào trong danh sách bỏ qua."
+        .resetDefaultShortcutButton: "Mặc định"
     ]
 
     private static let enStrings: [LKey: String] = [
@@ -332,7 +317,6 @@ public final class LocalizationManager: ObservableObject, @unchecked Sendable {
         .tabGeneral: "General",
         .tabGeminiAI: "Gemini AI",
         .tabShortcuts: "Shortcuts",
-        .tabIgnoredApps: "Ignored Apps",
 
         .generalStartupSection: "System & Behavior",
         .launchAtLogin: "Launch at login",
@@ -378,12 +362,6 @@ public final class LocalizationManager: ObservableObject, @unchecked Sendable {
         .historyShortcutDesc: "Summon the floating translation history panel near your mouse cursor.",
         .pressShortcutPrompt: "Press new shortcut...",
         .recordShortcutButton: "Record Shortcut",
-        .resetDefaultShortcutButton: "Reset Default",
-
-        .ignoredAppsDescription: "Do not auto-translate when copying from these applications (e.g. Password Managers, Terminal...).",
-        .addRunningAppButton: "Add from Running Apps",
-        .addBundleIdPlaceholder: "Enter Bundle ID or App Name...",
-        .removeIgnoredAppButton: "Remove",
-        .noIgnoredApps: "No ignored applications configured."
+        .resetDefaultShortcutButton: "Reset Default"
     ]
 }

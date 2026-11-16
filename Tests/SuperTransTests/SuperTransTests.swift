@@ -354,13 +354,14 @@ struct SuperTransTestRunner {
         {
           "targetLanguage": "en",
           "autoPasteOnSelection": true,
+          "ignoredApps": [{"bundleIdentifier": "com.apple.Terminal", "name": "Terminal"}],
           "recordHistory": false,
           "capacity": 250
         }
         """.data(using: .utf8)!
 
         let decoded = try? JSONDecoder().decode(AppSettings.self, from: legacyJSON)
-        assertTrue(decoded != nil, "Legacy AppSettings JSON containing autoPasteOnSelection decodes cleanly")
+        assertTrue(decoded != nil, "Legacy AppSettings JSON containing autoPasteOnSelection and ignoredApps decodes cleanly")
         assertEqual(decoded?.targetLanguage, "en", "Preserves targetLanguage from legacy JSON")
         assertEqual(decoded?.recordHistory, false, "Preserves recordHistory from legacy JSON")
         assertEqual(decoded?.capacity, 250, "Preserves capacity from legacy JSON")

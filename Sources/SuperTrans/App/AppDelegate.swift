@@ -24,9 +24,6 @@ public final class AppDelegate: NSObject, NSApplicationDelegate {
 
         // Configure PasteboardMonitor
         pasteboardMonitor.maxThumbnailPixelSize = storageManager.settings.maxThumbnailPixelSize
-        pasteboardMonitor.isIgnoredAppCheck = { [weak self] bundleId, name in
-            self?.storageManager.isAppIgnored(bundleIdentifier: bundleId, name: name) ?? false
-        }
         pasteboardMonitor.onCopyDetected = { [weak self] payload, isDoubleCopy in
             guard let self = self else { return }
             let settings = self.storageManager.settings
@@ -216,6 +213,8 @@ public final class AppDelegate: NSObject, NSApplicationDelegate {
         if mainMenu.items.isEmpty {
             let appMenuItem = NSMenuItem()
             let appMenu = NSMenu(title: "SuperTrans")
+            appMenu.addItem(withTitle: "Close Window", action: #selector(NSWindow.performClose(_:)), keyEquivalent: "w")
+            appMenu.addItem(.separator())
             appMenu.addItem(withTitle: "Quit SuperTrans", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q")
             appMenuItem.submenu = appMenu
             mainMenu.addItem(appMenuItem)

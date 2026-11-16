@@ -32,8 +32,6 @@ public final class PasteboardMonitor: PasteboardMonitoring, @unchecked Sendable 
     public var doubleCopyWindowSeconds: TimeInterval = 0.45
     public var maxThumbnailPixelSize: Int = 220
 
-    public var isIgnoredAppCheck: ((_ bundleIdentifier: String?, _ name: String?) -> Bool)?
-
     /// Callback invoked when clipboard changes or double-copy occurs:
     /// `(payload, isDoubleCopy)`
     public var onCopyDetected: ((ClipboardPayload, Bool) -> Void)?
@@ -121,7 +119,6 @@ public final class PasteboardMonitor: PasteboardMonitoring, @unchecked Sendable 
             // Wait briefly for the second Cmd+C to settle in NSPasteboard, then emit double copy
             monitorQueue.asyncAfter(deadline: .now() + 0.06) { [weak self] in
                 guard let self = self else { return }
-                guard !self.isFrontmostAppIgnored() else { return }
                 self.stateLock.lock()
                 self.lastChangeCount = self.pasteboard.changeCount
                 self.lastCopyTimestamp = 0 // Prevent duplicate trigger from poll loop
@@ -139,13 +136,6 @@ public final class PasteboardMonitor: PasteboardMonitoring, @unchecked Sendable 
         defer { stateLock.unlock() }
         suppressedChangeCounts.insert(newChangeCount)
         lastChangeCount = newChangeCount
-    }
-
-    public func isFrontmostAppIgnored() -> Bool {
-        let app = NSWorkspace.shared.frontmostApplication
-        let bundleId = app?.bundleIdentifier?.trimmingCharacters(in: .whitespacesAndNewlines)
-        let name = app?.localizedName?.trimmingCharacters(in: .whitespacesAndNewlines)
-        return isIgnoredAppCheck?(bundleId, name) ?? false
     }
 
     private func checkPasteboard() {
@@ -172,8 +162,6 @@ public final class PasteboardMonitor: PasteboardMonitoring, @unchecked Sendable 
             let isDoubleCopy = delta > 0.03 && delta <= doubleCopyWindowSeconds
             lastCopyTimestamp = isDoubleCopy ? 0 : now
             stateLock.unlock()
-
-            guard !isFrontmostAppIgnored() else { return }
 
             if let payload = extractCurrentPayload(maxThumbnailPixelSize: maxThumbnailPixelSize) {
                 onCopyDetected?(payload, isDoubleCopy)

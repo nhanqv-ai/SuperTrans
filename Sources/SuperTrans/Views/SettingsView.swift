@@ -17,7 +17,6 @@ public struct SettingsView: View {
         case geminiAI
         case prompt
         case projects
-        case ignoredApps
         case about
 
         public var id: String { rawValue }
@@ -29,7 +28,6 @@ public struct SettingsView: View {
             case .geminiAI: return LocalizationManager.shared.tr(.tabGeminiAI)
             case .prompt: return "Prompt"
             case .projects: return isVi ? "Dự án" : "Projects"
-            case .ignoredApps: return LocalizationManager.shared.tr(.tabIgnoredApps)
             case .about: return isVi ? "Thông tin" : "About"
             }
         }
@@ -40,7 +38,6 @@ public struct SettingsView: View {
             case .geminiAI: return "sparkles"
             case .prompt: return "text.bubble"
             case .projects: return "folder.badge.gearshape"
-            case .ignoredApps: return "eye.slash"
             case .about: return "info.circle"
             }
         }
@@ -63,7 +60,6 @@ public struct SettingsView: View {
     @State private var isRecordingTranslateShortcut: Bool = false
     @State private var isRecordingHistoryShortcut: Bool = false
     @State private var shortcutEventMonitor: Any? = nil
-    @State private var selectedIgnoredAppId: String? = nil
     @State private var isAccessibilityTrusted: Bool = AXIsProcessTrusted()
     @State private var showingClearConfirmation: Bool = false
     @State private var showingResetConfirmation: Bool = false
@@ -84,8 +80,6 @@ public struct SettingsView: View {
     @State private var didCopyPromptFeedback: Bool = false
     @State private var isTestingSelectedModel: Bool = false
     @State private var selectedModelTestStatus: Bool? = nil
-    @State private var copiedIgnoredAppBid: String? = nil
-    @State private var showingClearIgnoredAppsConfirmation: Bool = false
     @State private var didCopyVersionInfoFeedback: Bool = false
     @State private var showingDeleteProjectConfirmation: Bool = false
     @State private var pendingDeleteCustomPromptId: UUID? = nil
@@ -93,8 +87,6 @@ public struct SettingsView: View {
     @State private var copiedPopoverItemId: UUID? = nil
     @State private var didCopyAllPopoverItemsFeedback: Bool = false
     @State private var popoverItemsSearchQuery: String = ""
-    @State private var ignoredAppsSearchQuery: String = ""
-    @State private var isDropTargetedIgnoredApps: Bool = false
     @State private var pendingDeleteAPIKey: String? = nil
     @State private var newCustomPromptNameInput: String = ""
     @State private var selectedInspectorPromptId: String? = nil
@@ -123,8 +115,6 @@ public struct SettingsView: View {
             topTabBar
             Divider()
             contentArea
-            Divider()
-            footerBar
         }
         .frame(width: 510, height: 500)
         .background(Color(nsColor: .windowBackgroundColor))
@@ -221,10 +211,6 @@ public struct SettingsView: View {
             return isVi
                 ? "Dự án: \(proj.name) (\(proj.glossary.count) thuật ngữ)"
                 : "Project: \(proj.name) (\(proj.glossary.count) terms)"
-        case .ignoredApps:
-            return isVi
-                ? "\(s.ignoredApps.count) ứng dụng đang bỏ qua"
-                : "\(s.ignoredApps.count) ignored apps"
         case .about:
             return isVi
                 ? "SuperTrans v\(updateManager.currentVersion) · \(storageManager.items.count) bản dịch đã lưu"
@@ -247,8 +233,6 @@ public struct SettingsView: View {
                     promptTabContent
                 case .projects:
                     projectsTabContent
-                case .ignoredApps:
-                    ignoredAppsTabContent
                 case .about:
                     aboutTabContent
                 }
@@ -3591,506 +3575,7 @@ public struct SettingsView: View {
         }
     }
 
-    // MARK: - Tab 3: Ignored Apps (SuperClip Exact Layout)
-
-    private var ignoredAppsTabContent: some View {
-        let ignoredCount = storageManager.settings.ignoredApps.count
-        let ignoredBids = Set(storageManager.settings.ignoredApps.map { $0.bundleIdentifier.lowercased() })
-        let selfBundleId = Bundle.main.bundleIdentifier?.lowercased() ?? "com.nhanqv.supertrans"
-        let filteredIgnoredApps: [IgnoredApp] = {
-            let q = ignoredAppsSearchQuery.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
-            guard !q.isEmpty else { return storageManager.settings.ignoredApps }
-            return storageManager.settings.ignoredApps.filter {
-                $0.name.lowercased().contains(q) || $0.bundleIdentifier.lowercased().contains(q)
-            }
-        }()
-
-        return VStack(alignment: .leading, spacing: 10) {
-            HStack(spacing: 6) {
-                Text(loc.tr(.tabIgnoredApps))
-                    .font(.system(size: 13, weight: .semibold))
-                    .foregroundColor(.primary)
-
-                Text(isVi ? "(\(ignoredCount) ứng dụng)" : "(\(ignoredCount) apps)")
-                    .font(.system(size: 11, design: .monospaced))
-                    .foregroundColor(.secondary)
-
-                Spacer()
-
-                if ignoredCount >= 4 {
-                    HStack(spacing: 4) {
-                        Image(systemName: "magnifyingglass")
-                            .font(.system(size: 9.5))
-                            .foregroundColor(.secondary)
-                        TextField(isVi ? "Lọc ứng dụng..." : "Filter apps...", text: $ignoredAppsSearchQuery)
-                            .textFieldStyle(.plain)
-                            .font(.system(size: 10.5))
-                            .frame(width: 120)
-                        if !ignoredAppsSearchQuery.isEmpty {
-                            Button(action: { ignoredAppsSearchQuery = "" }) {
-                                Image(systemName: "xmark.circle.fill")
-                                    .font(.system(size: 9.5))
-                                    .foregroundColor(.secondary)
-                            }
-                            .buttonStyle(.plain)
-                        }
-                    }
-                    .padding(.horizontal, 6)
-                    .padding(.vertical, 3)
-                    .background(RoundedRectangle(cornerRadius: 4).fill(Color(nsColor: .textBackgroundColor)))
-                    .overlay(RoundedRectangle(cornerRadius: 4).stroke(Color(nsColor: .separatorColor), lineWidth: 0.6))
-                }
-            }
-
-            Text(loc.tr(.ignoredAppsDescription))
-                .font(.system(size: 11.5))
-                .foregroundColor(.secondary)
-
-            if storageManager.settings.ignoredApps.isEmpty {
-                RoundedRectangle(cornerRadius: 6, style: .continuous)
-                    .fill(Color(nsColor: .textBackgroundColor))
-                    .frame(height: 180)
-                    .overlay(
-                        VStack(spacing: 8) {
-                            Image(systemName: "eye.slash")
-                                .font(.system(size: 24))
-                                .foregroundColor(.secondary)
-                            Text(loc.tr(.noIgnoredApps))
-                                .font(.system(size: 12, weight: .medium))
-                                .foregroundColor(.secondary)
-
-                            Text(isVi ? "Kéo thả ứng dụng (.app) từ Finder vào đây hoặc chọn bên dưới" : "Drag & drop .app bundles from Finder here or choose below")
-                                .font(.system(size: 10.5))
-                                .foregroundColor(.secondary.opacity(0.8))
-
-                            Button(action: {
-                                let presets: [(name: String, bid: String)] = [
-                                    ("Keychain Access", "com.apple.keychainaccess"),
-                                    ("1Password", "com.1password.1password"),
-                                    ("Bitwarden", "com.bitwarden.desktop"),
-                                    ("KeePassXC", "org.keepassxc.keepassxc"),
-                                    ("Terminal", "com.apple.Terminal"),
-                                    ("iTerm2", "com.googlecode.iterm2")
-                                ]
-                                for p in presets {
-                                    let iconPath = NSWorkspace.shared.urlForApplication(withBundleIdentifier: p.bid)?.path
-                                    storageManager.addIgnoredApp(IgnoredApp(bundleIdentifier: p.bid, name: p.name, iconPath: iconPath))
-                                }
-                            }) {
-                                HStack(spacing: 4) {
-                                    Image(systemName: "lock.shield")
-                                        .font(.system(size: 10.5))
-                                    Text(isVi ? "Thêm nhanh trình quản lý mật khẩu & Terminal" : "Add Password Managers & Terminals")
-                                        .font(.system(size: 11, weight: .medium))
-                                }
-                            }
-                            .buttonStyle(.bordered)
-                            .controlSize(.small)
-                            .padding(.top, 2)
-                        }
-                    )
-                    .overlay(
-                        RoundedRectangle(cornerRadius: 6, style: .continuous)
-                            .stroke(isDropTargetedIgnoredApps ? Color.accentColor : Color(nsColor: .separatorColor), lineWidth: isDropTargetedIgnoredApps ? 1.8 : 0.8)
-                    )
-                    .onDrop(of: [.fileURL], isTargeted: $isDropTargetedIgnoredApps, perform: handleDroppedAppProviders)
-            } else {
-                ScrollView {
-                    if filteredIgnoredApps.isEmpty {
-                        Text(isVi ? "Không tìm thấy ứng dụng phù hợp." : "No matching ignored apps.")
-                            .font(.system(size: 11))
-                            .foregroundColor(.secondary)
-                            .frame(maxWidth: .infinity)
-                            .padding(.vertical, 24)
-                    } else {
-                        LazyVStack(spacing: 2) {
-                            ForEach(filteredIgnoredApps) { app in
-                                ignoredAppRow(app)
-                            }
-                        }
-                        .padding(4)
-                    }
-                }
-                .frame(height: 180)
-                .background(Color(nsColor: .textBackgroundColor))
-                .cornerRadius(6)
-                .overlay(
-                    RoundedRectangle(cornerRadius: 6, style: .continuous)
-                        .stroke(isDropTargetedIgnoredApps ? Color.accentColor : Color(nsColor: .separatorColor), lineWidth: isDropTargetedIgnoredApps ? 1.8 : 0.8)
-                )
-                .onDrop(of: [.fileURL], isTargeted: $isDropTargetedIgnoredApps, perform: handleDroppedAppProviders)
-            }
-
-            HStack(spacing: 8) {
-                Button(action: openAppSelectionPanel) {
-                    Image(systemName: "plus")
-                        .frame(width: 18, height: 18)
-                }
-                .buttonStyle(.bordered)
-                .controlSize(.small)
-                .help(isVi ? "Chọn ứng dụng từ thư mục Applications" : "Choose app from Applications folder")
-
-                Button(action: removeSelectedIgnoredApp) {
-                    Image(systemName: "minus")
-                        .frame(width: 18, height: 18)
-                }
-                .buttonStyle(.bordered)
-                .controlSize(.small)
-                .disabled(selectedIgnoredAppId == nil)
-                .help(isVi ? "Bỏ chặn ứng dụng đang chọn" : "Remove selected ignored app")
-
-                Menu(loc.tr(.addRunningAppButton)) {
-                    let runningApps = NSWorkspace.shared.runningApplications
-                        .filter {
-                            $0.activationPolicy == .regular &&
-                            $0.bundleIdentifier != nil &&
-                            $0.bundleIdentifier?.lowercased() != selfBundleId
-                        }
-                        .sorted { ($0.localizedName ?? "") < ($1.localizedName ?? "") }
-
-                    ForEach(runningApps, id: \.processIdentifier) { app in
-                        if let bid = app.bundleIdentifier, let name = app.localizedName {
-                            let isAlreadyIgnored = ignoredBids.contains(bid.lowercased())
-                            Button(isAlreadyIgnored ? "\(name) (\(isVi ? "Đã thêm" : "Added"))" : "\(name) (\(bid))") {
-                                storageManager.addIgnoredApp(IgnoredApp(bundleIdentifier: bid, name: name, iconPath: app.bundleURL?.path))
-                            }
-                            .disabled(isAlreadyIgnored)
-                        }
-                    }
-                }
-                .menuStyle(.borderedButton)
-                .controlSize(.small)
-                .fixedSize()
-
-                Menu(isVi ? "Gợi ý bảo mật" : "Security Presets") {
-                    let presets: [(name: String, bid: String)] = [
-                        ("Keychain Access", "com.apple.keychainaccess"),
-                        ("1Password", "com.1password.1password"),
-                        ("Bitwarden", "com.bitwarden.desktop"),
-                        ("KeePassXC", "org.keepassxc.keepassxc"),
-                        ("Terminal", "com.apple.Terminal"),
-                        ("iTerm2", "com.googlecode.iterm2")
-                    ]
-                    let unaddedPresets = presets.filter { !ignoredBids.contains($0.bid.lowercased()) }
-
-                    if !unaddedPresets.isEmpty {
-                        Button(isVi ? "Thêm tất cả trình quản lý mật khẩu & Terminal" : "Add All Password Managers & Terminals") {
-                            for p in unaddedPresets {
-                                let iconPath = NSWorkspace.shared.urlForApplication(withBundleIdentifier: p.bid)?.path
-                                storageManager.addIgnoredApp(IgnoredApp(bundleIdentifier: p.bid, name: p.name, iconPath: iconPath))
-                            }
-                        }
-                        Divider()
-                    }
-
-                    ForEach(presets, id: \.bid) { preset in
-                        let isAlreadyIgnored = ignoredBids.contains(preset.bid.lowercased())
-                        Button(isAlreadyIgnored ? "\(preset.name) (\(isVi ? "Đã thêm" : "Added"))" : "\(preset.name) (\(preset.bid))") {
-                            let iconPath = NSWorkspace.shared.urlForApplication(withBundleIdentifier: preset.bid)?.path
-                            storageManager.addIgnoredApp(IgnoredApp(bundleIdentifier: preset.bid, name: preset.name, iconPath: iconPath))
-                        }
-                        .disabled(isAlreadyIgnored)
-                    }
-                }
-                .menuStyle(.borderedButton)
-                .controlSize(.small)
-                .fixedSize()
-                .help(isVi ? "Thêm nhanh các trình quản lý mật khẩu và Terminal phổ biến vào danh sách bỏ qua" : "Quickly add common password managers and terminals to the ignored list")
-
-                Menu {
-                    Button(isVi ? "Nhập danh sách ứng dụng bỏ qua (.json / .txt)..." : "Import Ignored Apps (.json / .txt)...") {
-                        importIgnoredAppsFromFilePanel()
-                    }
-                    if !storageManager.settings.ignoredApps.isEmpty {
-                        Button(isVi ? "Xuất danh sách ứng dụng bỏ qua (.json)..." : "Export Ignored Apps (.json)...") {
-                            exportIgnoredAppsToFilePanel()
-                        }
-                    }
-                } label: {
-                    Image(systemName: "square.and.arrow.up.on.square")
-                        .font(.system(size: 10))
-                }
-                .menuStyle(.borderedButton)
-                .controlSize(.small)
-                .fixedSize()
-                .help(isVi ? "Nhập hoặc xuất danh sách ứng dụng bỏ qua bằng tệp (.json / .txt)" : "Import or export ignored apps list (.json / .txt)")
-
-                Spacer()
-
-                if storageManager.settings.ignoredApps.count > 1 {
-                    Button(action: {
-                        var s = storageManager.settings
-                        s.ignoredApps.sort {
-                            ($0.name.isEmpty ? $0.bundleIdentifier : $0.name)
-                                .localizedCaseInsensitiveCompare($1.name.isEmpty ? $1.bundleIdentifier : $1.name) == .orderedAscending
-                        }
-                        storageManager.settings = s
-                    }) {
-                        Image(systemName: "arrow.up.arrow.down")
-                            .font(.system(size: 10))
-                    }
-                    .buttonStyle(.bordered)
-                    .controlSize(.small)
-                    .help(isVi ? "Sắp xếp danh sách ứng dụng theo thứ tự A–Z" : "Sort ignored apps alphabetically (A–Z)")
-                }
-
-                if !storageManager.settings.ignoredApps.isEmpty {
-                    Button(action: {
-                        if storageManager.settings.ignoredApps.count > 1 {
-                            showingClearIgnoredAppsConfirmation = true
-                        } else {
-                            var s = storageManager.settings
-                            s.ignoredApps.removeAll()
-                            storageManager.settings = s
-                            selectedIgnoredAppId = nil
-                        }
-                    }) {
-                        HStack(spacing: 3) {
-                            Image(systemName: "trash")
-                                .font(.system(size: 10))
-                            Text(isVi ? "Bỏ chặn tất cả" : "Clear All")
-                                .font(.system(size: 11))
-                        }
-                    }
-                    .buttonStyle(.bordered)
-                    .controlSize(.small)
-                    .confirmationDialog(
-                        isVi ? "Bỏ chặn toàn bộ \(storageManager.settings.ignoredApps.count) ứng dụng trong danh sách?" : "Remove all \(storageManager.settings.ignoredApps.count) apps from the ignored list?",
-                        isPresented: $showingClearIgnoredAppsConfirmation,
-                        titleVisibility: .visible
-                    ) {
-                        Button(isVi ? "Bỏ chặn tất cả" : "Clear All", role: .destructive) {
-                            var s = storageManager.settings
-                            s.ignoredApps.removeAll()
-                            storageManager.settings = s
-                            selectedIgnoredAppId = nil
-                        }
-                        Button(isVi ? "Hủy" : "Cancel", role: .cancel) {}
-                    }
-                }
-            }
-        }
-        .padding(12)
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .background(cardBackground)
-    }
-
-    private func ignoredAppRow(_ app: IgnoredApp) -> some View {
-        let isSelected = selectedIgnoredAppId == app.id
-        return HStack(spacing: 8) {
-            appIconImage(for: app)
-                .resizable()
-                .aspectRatio(contentMode: .fit)
-                .frame(width: 20, height: 20)
-
-            Text(app.name.isEmpty ? app.bundleIdentifier : app.name)
-                .font(.system(size: 12, weight: .medium))
-                .foregroundColor(.primary)
-                .lineLimit(1)
-
-            Spacer()
-
-            Text(app.bundleIdentifier)
-                .font(.system(size: 10, design: .monospaced))
-                .foregroundColor(.secondary)
-                .lineLimit(1)
-
-            if !app.bundleIdentifier.isEmpty {
-                Button(action: {
-                    NSPasteboard.general.clearContents()
-                    NSPasteboard.general.setString(app.bundleIdentifier, forType: .string)
-                    copiedIgnoredAppBid = app.id
-                    DispatchQueue.main.asyncAfter(deadline: .now() + 1.2) {
-                        if copiedIgnoredAppBid == app.id {
-                            copiedIgnoredAppBid = nil
-                        }
-                    }
-                }) {
-                    Image(systemName: copiedIgnoredAppBid == app.id ? "checkmark" : "doc.on.doc")
-                        .font(.system(size: 9.5))
-                        .foregroundColor(copiedIgnoredAppBid == app.id ? .green : .secondary)
-                        .frame(width: 18, height: 18)
-                }
-                .buttonStyle(.borderless)
-                .help(isVi ? "Sao chép Bundle ID (\(app.bundleIdentifier))" : "Copy Bundle ID (\(app.bundleIdentifier))")
-            }
-
-            if let path = app.iconPath ?? NSWorkspace.shared.urlForApplication(withBundleIdentifier: app.bundleIdentifier)?.path,
-               FileManager.default.fileExists(atPath: path) {
-                Button(action: {
-                    NSWorkspace.shared.selectFile(path, inFileViewerRootedAtPath: "")
-                }) {
-                    Image(systemName: "folder")
-                        .font(.system(size: 10))
-                        .foregroundColor(.secondary)
-                        .frame(width: 18, height: 18)
-                }
-                .buttonStyle(.borderless)
-                .help(isVi ? "Hiển thị ứng dụng trong Finder" : "Reveal app in Finder")
-            }
-
-            Button(action: {
-                storageManager.removeIgnoredApp(bundleIdentifier: app.bundleIdentifier.isEmpty ? app.name : app.bundleIdentifier)
-                if selectedIgnoredAppId == app.id {
-                    selectedIgnoredAppId = nil
-                }
-            }) {
-                Image(systemName: "trash")
-                    .font(.system(size: 10))
-                    .foregroundColor(.red.opacity(0.8))
-                    .frame(width: 18, height: 18)
-            }
-            .buttonStyle(.borderless)
-            .help(isVi ? "Bỏ chặn ứng dụng này" : "Remove this ignored app")
-        }
-        .padding(.horizontal, 8)
-        .padding(.vertical, 4)
-        .background(
-            RoundedRectangle(cornerRadius: 4, style: .continuous)
-                .fill(isSelected ? Color.accentColor.opacity(0.2) : Color.clear)
-        )
-        .contentShape(Rectangle())
-        .onTapGesture {
-            selectedIgnoredAppId = app.id
-        }
-        .contextMenu {
-            if let path = app.iconPath ?? NSWorkspace.shared.urlForApplication(withBundleIdentifier: app.bundleIdentifier)?.path,
-               FileManager.default.fileExists(atPath: path) {
-                Button(isVi ? "Hiển thị trong Finder" : "Reveal in Finder") {
-                    NSWorkspace.shared.selectFile(path, inFileViewerRootedAtPath: "")
-                }
-            }
-            if !app.bundleIdentifier.isEmpty {
-                Button(isVi ? "Sao chép Bundle ID" : "Copy Bundle ID") {
-                    NSPasteboard.general.clearContents()
-                    NSPasteboard.general.setString(app.bundleIdentifier, forType: .string)
-                    copiedIgnoredAppBid = app.id
-                    DispatchQueue.main.asyncAfter(deadline: .now() + 1.2) {
-                        if copiedIgnoredAppBid == app.id {
-                            copiedIgnoredAppBid = nil
-                        }
-                    }
-                }
-            }
-            Divider()
-            Button(isVi ? "Bỏ chặn ứng dụng này" : "Remove Ignored App", role: .destructive) {
-                storageManager.removeIgnoredApp(bundleIdentifier: app.bundleIdentifier.isEmpty ? app.name : app.bundleIdentifier)
-                if selectedIgnoredAppId == app.id {
-                    selectedIgnoredAppId = nil
-                }
-            }
-        }
-    }
-
-    private func appIconImage(for app: IgnoredApp) -> Image {
-        if let path = app.iconPath, FileManager.default.fileExists(atPath: path) {
-            return Image(nsImage: NSWorkspace.shared.icon(forFile: path))
-        }
-        if let url = NSWorkspace.shared.urlForApplication(withBundleIdentifier: app.bundleIdentifier) {
-            return Image(nsImage: NSWorkspace.shared.icon(forFile: url.path))
-        }
-        return Image(nsImage: NSWorkspace.shared.icon(for: .application))
-    }
-
-    private func openAppSelectionPanel() {
-        NSApp.activate(ignoringOtherApps: true)
-        let panel = NSOpenPanel()
-        panel.directoryURL = URL(fileURLWithPath: "/Applications")
-        panel.allowedContentTypes = [.applicationBundle, .application]
-        panel.allowsMultipleSelection = true
-        panel.canChooseDirectories = false
-        panel.canChooseFiles = true
-
-        if panel.runModal() == .OK {
-            for url in panel.urls {
-                let bundle = Bundle(url: url)
-                let bid = bundle?.bundleIdentifier ?? url.deletingPathExtension().lastPathComponent
-                let name = FileManager.default.displayName(atPath: url.path)
-                storageManager.addIgnoredApp(IgnoredApp(bundleIdentifier: bid, name: name, iconPath: url.path))
-            }
-        }
-    }
-
-    private func handleDroppedAppProviders(_ providers: [NSItemProvider]) -> Bool {
-        let selfBundleId = Bundle.main.bundleIdentifier?.lowercased() ?? "com.nhanqv.supertrans"
-        var handled = false
-        for provider in providers where provider.hasItemConformingToTypeIdentifier(UTType.fileURL.identifier) {
-            handled = true
-            provider.loadItem(forTypeIdentifier: UTType.fileURL.identifier, options: nil) { item, _ in
-                let fileURL: URL?
-                if let data = item as? Data {
-                    fileURL = URL(dataRepresentation: data, relativeTo: nil)
-                } else if let url = item as? URL {
-                    fileURL = url
-                } else {
-                    fileURL = nil
-                }
-                guard let url = fileURL, url.pathExtension.lowercased() == "app" else { return }
-                DispatchQueue.main.async {
-                    let bundle = Bundle(url: url)
-                    let bid = bundle?.bundleIdentifier ?? url.deletingPathExtension().lastPathComponent
-                    guard bid.lowercased() != selfBundleId else { return }
-                    let name = FileManager.default.displayName(atPath: url.path)
-                    storageManager.addIgnoredApp(IgnoredApp(bundleIdentifier: bid, name: name, iconPath: url.path))
-                }
-            }
-        }
-        return handled
-    }
-
-    private func removeSelectedIgnoredApp() {
-        guard let id = selectedIgnoredAppId else { return }
-        if let match = storageManager.settings.ignoredApps.first(where: { $0.id == id }) {
-            storageManager.removeIgnoredApp(bundleIdentifier: match.bundleIdentifier.isEmpty ? match.name : match.bundleIdentifier)
-        }
-        selectedIgnoredAppId = nil
-    }
-
-    private func importIgnoredAppsFromFilePanel() {
-        NSApp.activate(ignoringOtherApps: true)
-        let panel = NSOpenPanel()
-        panel.allowedContentTypes = [.json, .plainText]
-        panel.allowsMultipleSelection = false
-        panel.canChooseDirectories = false
-        panel.canChooseFiles = true
-        guard panel.runModal() == .OK, let url = panel.url,
-              let data = try? Data(contentsOf: url) else { return }
-        let selfBundleId = Bundle.main.bundleIdentifier?.lowercased() ?? "com.nhanqv.supertrans"
-
-        if let importedApps = try? JSONDecoder().decode([IgnoredApp].self, from: data), !importedApps.isEmpty {
-            for app in importedApps where app.bundleIdentifier.lowercased() != selfBundleId {
-                let iconPath = app.iconPath ?? NSWorkspace.shared.urlForApplication(withBundleIdentifier: app.bundleIdentifier)?.path
-                storageManager.addIgnoredApp(IgnoredApp(bundleIdentifier: app.bundleIdentifier, name: app.name, iconPath: iconPath))
-            }
-        } else if let text = String(data: data, encoding: .utf8) {
-            let lines = text.components(separatedBy: .newlines)
-                .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
-                .filter { !$0.isEmpty && $0.lowercased() != selfBundleId }
-            for bid in lines {
-                let appURL = NSWorkspace.shared.urlForApplication(withBundleIdentifier: bid)
-                let appName = appURL.map { FileManager.default.displayName(atPath: $0.path) } ?? bid
-                storageManager.addIgnoredApp(IgnoredApp(bundleIdentifier: bid, name: appName, iconPath: appURL?.path))
-            }
-        }
-    }
-
-    private func exportIgnoredAppsToFilePanel() {
-        let apps = storageManager.settings.ignoredApps
-        guard !apps.isEmpty else { return }
-        NSApp.activate(ignoringOtherApps: true)
-        let panel = NSSavePanel()
-        panel.allowedContentTypes = [.json]
-        panel.nameFieldStringValue = "SuperTrans-IgnoredApps.json"
-        panel.canCreateDirectories = true
-        guard panel.runModal() == .OK, let url = panel.url else { return }
-        let enc = JSONEncoder()
-        enc.outputFormatting = [.prettyPrinted, .sortedKeys]
-        if let data = try? enc.encode(apps) {
-            try? data.write(to: url, options: .atomic)
-        }
-    }
-
-    // MARK: - Tab 4: About & Storage Management (SuperClip Style)
+    // MARK: - Tab 5: About & Storage Management (SuperClip Style)
 
     private var aboutTabContent: some View {
         VStack(spacing: 8) {
@@ -4537,7 +4022,7 @@ public struct SettingsView: View {
         }
     }
 
-    // MARK: - Footer Bar
+    // MARK: - Helpers
 
     private var activePromptShortTitle: String {
         let s = storageManager.settings
@@ -4550,178 +4035,6 @@ public struct SettingsView: View {
             return trimmed.isEmpty ? (isVi ? "Prompt tuỳ chỉnh" : "Custom Prompt") : trimmed
         }
         return isVi ? "Mặc định" : "Default"
-    }
-
-    private var footerBar: some View {
-        let keyCount = storageManager.settings.validAPIKeys.count
-        let activeProjName = storageManager.activeProject.name
-
-        return HStack(spacing: 10) {
-            Menu {
-                ForEach(AppSettings.presetModels, id: \.self) { preset in
-                    let isSelected = storageManager.settings.selectedModel == preset && !isCustomModelMode
-                    Button(isSelected ? "✓ \(preset)" : preset) {
-                        isCustomModelMode = false
-                        selectedModelTestStatus = nil
-                        var s = storageManager.settings
-                        s.selectedModel = preset
-                        storageManager.settings = s
-                    }
-                }
-                Divider()
-                Button(isVi ? "Dán & Thêm API Key từ Clipboard" : "Paste & Add API Key from Clipboard") {
-                    pasteAndAddKeyFromClipboard()
-                }
-                if keyCount > 0 {
-                    Button(isVi ? "Kiểm tra tất cả Key" : "Test All Keys") {
-                        testAllAPIKeys()
-                    }
-                    Button(isVi ? "Đặt lại trạng thái Key" : "Reset Key Cooldowns") {
-                        APIKeyRotator.shared.clearState()
-                        keyRefreshTrigger = UUID()
-                    }
-                }
-                Divider()
-                Button(isVi ? "Quản lý Gemini AI..." : "Manage Gemini AI...") {
-                    stopShortcutRecording()
-                    selectedTab = .geminiAI
-                }
-            } label: {
-                HStack(spacing: 4) {
-                    Circle()
-                        .fill(keyCount > 0 ? Color.green : Color.orange)
-                        .frame(width: 6, height: 6)
-                    Text(keyCount > 0
-                         ? "\(keyCount) API Key"
-                         : (isVi ? "Chưa có Key" : "No API Key"))
-                        .font(.system(size: 10.5, weight: .medium))
-                        .foregroundColor(keyCount > 0 ? .secondary : .orange)
-                }
-            }
-            .menuStyle(.borderlessButton)
-            .fixedSize()
-            .help(isVi ? "Đổi nhanh Model Gemini, kiểm tra Key hoặc mở tab Gemini AI" : "Quickly switch Gemini Model, test keys, or open Gemini AI tab")
-
-            Text("·")
-                .font(.system(size: 10.5))
-                .foregroundColor(.secondary.opacity(0.6))
-
-            Menu {
-                let currentLang = storageManager.settings.targetLanguage
-                ForEach(LanguageOption.supported) { opt in
-                    let isSelected = opt.code.caseInsensitiveCompare(currentLang) == .orderedSame
-                    Button(isSelected ? "✓ \(opt.displayName)" : opt.displayName) {
-                        var s = storageManager.settings
-                        s.targetLanguage = opt.code
-                        storageManager.settings = s
-                    }
-                }
-                Divider()
-                Button(isVi ? "Mở tab Cài đặt Chung..." : "Open General Settings...") {
-                    stopShortcutRecording()
-                    selectedTab = .general
-                }
-            } label: {
-                let opt = LanguageOption.option(for: storageManager.settings.targetLanguage)
-                HStack(spacing: 3) {
-                    Image(systemName: "globe")
-                        .font(.system(size: 9.5))
-                    Text(opt.code == "vi" ? "Tiếng Việt" : opt.englishName)
-                        .font(.system(size: 10.5, weight: .medium))
-                        .lineLimit(1)
-                }
-                .foregroundColor(.secondary)
-            }
-            .menuStyle(.borderlessButton)
-            .fixedSize()
-            .help(isVi ? "Đổi nhanh Ngôn ngữ đích mặc định" : "Quickly switch Default Target Language")
-
-            Text("·")
-                .font(.system(size: 10.5))
-                .foregroundColor(.secondary.opacity(0.6))
-
-            Menu {
-                ForEach(storageManager.projects) { proj in
-                    Button(proj.id == storageManager.activeProject.id ? "✓ \(proj.name)" : proj.name) {
-                        storageManager.selectActiveProject(id: proj.id)
-                    }
-                }
-                Divider()
-                Button(isVi ? "Quản lý Dự án..." : "Manage Projects...") {
-                    stopShortcutRecording()
-                    selectedTab = .projects
-                }
-            } label: {
-                HStack(spacing: 3) {
-                    Image(systemName: "folder")
-                        .font(.system(size: 9.5))
-                    Text(activeProjName)
-                        .font(.system(size: 10.5, weight: .medium))
-                        .lineLimit(1)
-                }
-                .foregroundColor(.secondary)
-            }
-            .menuStyle(.borderlessButton)
-            .fixedSize()
-            .help(isVi ? "Đổi nhanh Dự án đang chọn hoặc mở tab Dự án" : "Quickly switch Active Project or open Projects tab")
-
-            Text("·")
-                .font(.system(size: 10.5))
-                .foregroundColor(.secondary.opacity(0.6))
-
-            Menu {
-                let s = storageManager.settings
-                let activeId = s.resolvedActivePromptId
-                ForEach(s.visibleBuiltinPromptPresets) { preset in
-                    let title = isVi ? preset.shortTitleVi : preset.shortTitleEn
-                    Button(preset.id == activeId ? "✓ \(title)" : title) {
-                        var updated = storageManager.settings
-                        updated.selectedPromptId = preset.id
-                        updated.customSystemPrompt = preset.prompt
-                        storageManager.settings = updated
-                    }
-                }
-                if !s.visibleCustomPromptPresets.isEmpty {
-                    Divider()
-                    ForEach(s.visibleCustomPromptPresets) { custom in
-                        let title = custom.name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
-                            ? (isVi ? "Prompt tuỳ chỉnh" : "Custom Prompt")
-                            : custom.name
-                        Button(custom.id.uuidString == activeId ? "✓ \(title)" : title) {
-                            var updated = storageManager.settings
-                            updated.selectedPromptId = custom.id.uuidString
-                            updated.customSystemPrompt = custom.prompt
-                            storageManager.settings = updated
-                        }
-                    }
-                }
-                Divider()
-                Button(isVi ? "Quản lý Prompt..." : "Manage Prompts...") {
-                    stopShortcutRecording()
-                    selectedTab = .prompt
-                }
-            } label: {
-                HStack(spacing: 3) {
-                    Image(systemName: "text.bubble")
-                        .font(.system(size: 9.5))
-                    Text(activePromptShortTitle)
-                        .font(.system(size: 10.5, weight: .medium))
-                        .lineLimit(1)
-                }
-                .foregroundColor(.secondary)
-            }
-            .menuStyle(.borderlessButton)
-            .fixedSize()
-            .help(isVi ? "Đổi nhanh Prompt đang dùng hoặc mở tab Prompt" : "Quickly switch Active Prompt or open Prompt tab")
-
-            Spacer()
-
-            Button(isVi ? "Xong" : "Done") {
-                onDismiss?()
-            }
-        }
-        .padding(.horizontal, 16)
-        .padding(.vertical, 6)
     }
 
     private var cardBackground: some View {

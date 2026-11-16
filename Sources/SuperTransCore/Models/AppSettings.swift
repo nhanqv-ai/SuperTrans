@@ -77,7 +77,6 @@ public struct AppSettings: Codable, Equatable, Sendable {
     public var maxThumbnailPixelSize: Int
     public var launchAtLogin: Bool
     public var language: String
-    public var ignoredApps: [IgnoredApp]
     public var automaticallyCheckForUpdates: Bool
     public var lastUpdateCheckDate: Date?
     public var popupWidth: Double?
@@ -277,7 +276,6 @@ Rules:
         maxThumbnailPixelSize: Int = AppSettings.defaultMaxThumbnailPixelSize,
         launchAtLogin: Bool = false,
         language: String = AppSettings.defaultLanguage,
-        ignoredApps: [IgnoredApp] = [],
         automaticallyCheckForUpdates: Bool = true,
         lastUpdateCheckDate: Date? = nil,
         popupWidth: Double? = nil,
@@ -308,7 +306,6 @@ Rules:
         self.maxThumbnailPixelSize = max(80, min(maxThumbnailPixelSize, 512))
         self.launchAtLogin = launchAtLogin
         self.language = language
-        self.ignoredApps = ignoredApps
         self.automaticallyCheckForUpdates = automaticallyCheckForUpdates
         self.lastUpdateCheckDate = lastUpdateCheckDate
         self.popupWidth = popupWidth
@@ -346,7 +343,6 @@ Rules:
         self.maxThumbnailPixelSize = max(80, min(thumb, 512))
         self.launchAtLogin = try c.decodeIfPresent(Bool.self, forKey: .launchAtLogin) ?? false
         self.language = try c.decodeIfPresent(String.self, forKey: .language) ?? AppSettings.defaultLanguage
-        self.ignoredApps = try c.decodeIfPresent([IgnoredApp].self, forKey: .ignoredApps) ?? []
         self.automaticallyCheckForUpdates = try c.decodeIfPresent(Bool.self, forKey: .automaticallyCheckForUpdates) ?? true
         self.lastUpdateCheckDate = try c.decodeIfPresent(Date.self, forKey: .lastUpdateCheckDate)
         self.popupWidth = try c.decodeIfPresent(Double.self, forKey: .popupWidth)
