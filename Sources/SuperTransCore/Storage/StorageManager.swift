@@ -20,9 +20,6 @@ public protocol StorageManaging: AnyObject, ObservableObject {
     func getImageURL(for item: TranslationItem) -> URL?
     func getImageData(for item: TranslationItem) -> Data?
     func flushDiskQueue()
-    func addIgnoredApp(_ app: IgnoredApp)
-    func removeIgnoredApp(bundleIdentifier: String)
-    func isAppIgnored(bundleIdentifier: String?, name: String?) -> Bool
 }
 
 public final class StorageManager: ObservableObject, StorageManaging, @unchecked Sendable {
@@ -513,52 +510,6 @@ public final class StorageManager: ObservableObject, StorageManaging, @unchecked
 
     public func flushDiskQueue() {
         fileQueue.sync {}
-    }
-
-    public func addIgnoredApp(_ app: IgnoredApp) {
-        lock.lock()
-        var current = _settings
-        if !current.ignoredApps.contains(where: { $0.id == app.id }) {
-            current.ignoredApps.append(app)
-            _settings = current
-            saveSettings()
-        }
-        lock.unlock()
-        notifyChange()
-    }
-
-    public func removeIgnoredApp(bundleIdentifier: String) {
-        lock.lock()
-        var current = _settings
-        current.ignoredApps.removeAll {
-            $0.bundleIdentifier.caseInsensitiveCompare(bundleIdentifier) == .orderedSame ||
-            $0.name.caseInsensitiveCompare(bundleIdentifier) == .orderedSame
-        }
-        _settings = current
-        saveSettings()
-        lock.unlock()
-        notifyChange()
-    }
-
-    public func isAppIgnored(bundleIdentifier: String?, name: String?) -> Bool {
-        lock.lock()
-        let apps = _settings.ignoredApps
-        lock.unlock()
-
-        let bid = bundleIdentifier?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
-        let appName = name?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
-
-        return apps.contains { ignored in
-            if !bid.isEmpty && !ignored.bundleIdentifier.isEmpty &&
-               ignored.bundleIdentifier.caseInsensitiveCompare(bid) == .orderedSame {
-                return true
-            }
-            if !appName.isEmpty && !ignored.name.isEmpty &&
-               ignored.name.caseInsensitiveCompare(appName) == .orderedSame {
-                return true
-            }
-            return false
-        }
     }
 
     private func enforceCapacity() {
