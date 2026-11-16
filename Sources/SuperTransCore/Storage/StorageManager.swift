@@ -104,15 +104,32 @@ public final class StorageManager: ObservableObject, StorageManaging, @unchecked
         self.decoder = dec
 
         var loadedSettings = AppSettings()
+        var needsSaveMigratedSettings = false
         if let data = try? Data(contentsOf: settingsURL),
            let s = try? dec.decode(AppSettings.self, from: data) {
             loadedSettings = s
-            // Migrate legacy default model (gemini-2.5-flash / gemini-2.0-flash) to gemini-3.1-flash-lite
-            if loadedSettings.selectedModel == "gemini-2.5-flash" ||
-               loadedSettings.selectedModel == "gemini-2.5-flash-lite" ||
-               loadedSettings.selectedModel == "gemini-2.0-flash" ||
-               loadedSettings.selectedModel == "gemini-2.5-pro" {
+            let legacyDeprecatedModels: Set<String> = [
+                "gemini-2.5-flash",
+                "gemini-2.5-flash-lite",
+                "gemini-2.0-flash",
+                "gemini-2.5-pro"
+            ]
+            if legacyDeprecatedModels.contains(loadedSettings.selectedModel) {
                 loadedSettings.selectedModel = AppSettings.defaultModel
+                loadedSettings.hasMigratedToFastFlashV2 = true
+                needsSaveMigratedSettings = true
+            } else if !loadedSettings.hasMigratedToFastFlashV2 {
+                // One-time migration from slower previous default models to gemini-3-flash-preview (~0.9s)
+                let previousSlowDefaults: Set<String> = [
+                    "gemini-3.1-flash-lite",
+                    "gemini-3.5-flash-lite",
+                    "gemini-3.5-flash"
+                ]
+                if previousSlowDefaults.contains(loadedSettings.selectedModel) {
+                    loadedSettings.selectedModel = AppSettings.defaultModel
+                }
+                loadedSettings.hasMigratedToFastFlashV2 = true
+                needsSaveMigratedSettings = true
             }
         }
 
@@ -121,6 +138,9 @@ public final class StorageManager: ObservableObject, StorageManaging, @unchecked
 
         createDirectoriesIfNeeded()
         loadFromDisk()
+        if needsSaveMigratedSettings {
+            saveSettings()
+        }
     }
 
     private func notifyChange() {

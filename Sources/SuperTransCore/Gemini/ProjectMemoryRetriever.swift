@@ -23,6 +23,14 @@ public struct ProjectLearningContext: Equatable, Sendable {
 }
 
 public enum ProjectMemoryRetriever {
+    /// Minimum lexical similarity required to inject an unverified historical translation as a few-shot example.
+    public static let minimumLexicalSimilarityForUnverifiedExample: Double = 0.20
+
+    private static let commonStopwords: Set<String> = [
+        "the", "and", "for", "are", "with", "this", "that", "from", "into", "your", "you", "can", "not", "was", "were", "have", "has", "will", "all",
+        "của", "các", "cho", "với", "trong", "một", "những", "được", "này", "khi", "đến", "như", "không"
+    ]
+
     /// Builds adaptive learning context for the given project, source text (if available), and target language.
     public static func retrieveContext(
         project: TranslationProject,
@@ -34,7 +42,9 @@ public enum ProjectMemoryRetriever {
     ) -> ProjectLearningContext {
         let normalizedQuery = (sourceText ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
 
-        // 1. Select relevant Glossary entries (prioritize exact substring matches in sourceText, then recent project glossary terms)
+        // 1. Select relevant Glossary entries:
+        //    - For text inputs: ONLY include terms that actually appear in `sourceText` to avoid prompt bloat.
+        //    - For image inputs (sourceText unknown before OCR): include up to `maxGlossaryTerms` project glossary entries.
         let matchedGlossary: [GlossaryEntry]
         if project.glossary.isEmpty {
             matchedGlossary = []
@@ -42,16 +52,10 @@ public enum ProjectMemoryRetriever {
             matchedGlossary = Array(project.glossary.prefix(maxGlossaryTerms))
         } else {
             let lowerQuery = normalizedQuery.lowercased()
-            var directMatches: [GlossaryEntry] = []
-            var otherEntries: [GlossaryEntry] = []
-            for entry in project.glossary {
-                if !entry.sourceTerm.isEmpty && lowerQuery.contains(entry.sourceTerm.lowercased()) {
-                    directMatches.append(entry)
-                } else {
-                    otherEntries.append(entry)
-                }
+            let directMatches = project.glossary.filter { entry in
+                !entry.sourceTerm.isEmpty && lowerQuery.contains(entry.sourceTerm.lowercased())
             }
-            matchedGlossary = Array((directMatches + otherEntries).prefix(maxGlossaryTerms))
+            matchedGlossary = Array(directMatches.prefix(maxGlossaryTerms))
         }
 
         // 2. Select top Few-Shot Translation Memory examples from this project
@@ -75,12 +79,27 @@ public enum ProjectMemoryRetriever {
             )
         }
 
+        // For image OCR (no sourceText query yet), only include explicitly user-verified Gold examples (max 2)
+        if normalizedQuery.isEmpty {
+            let verifiedOnly = Array(candidates.filter { $0.isVerified }.prefix(min(2, maxFewShotExamples)))
+            return ProjectLearningContext(
+                project: project,
+                matchedGlossary: matchedGlossary,
+                fewShotExamples: verifiedOnly
+            )
+        }
+
         let queryFeatures = extractFeatures(from: normalizedQuery)
 
-        let scored: [(item: TranslationItem, score: Double)] = candidates.enumerated().map { index, item in
+        let scored: [(item: TranslationItem, score: Double)] = candidates.enumerated().compactMap { index, item in
             let src = item.sourceText ?? ""
             let candidateFeatures = extractFeatures(from: src)
             let lexicalSim = computeSimilarity(queryFeatures: queryFeatures, candidateFeatures: candidateFeatures)
+
+            // Skip unrelated unverified history items so we don't bloat prompts with ~600-800 irrelevant tokens
+            guard item.isVerified || lexicalSim >= minimumLexicalSimilarityForUnverifiedExample else {
+                return nil
+            }
 
             // Quality & user-feedback weights (Verified Gold Examples > Pinned > Copied/Reused > Recent)
             var multiplier: Double = 1.0
@@ -99,7 +118,7 @@ public enum ProjectMemoryRetriever {
                 qualityBonus += min(0.15, Double(item.usageCount) * 0.04)
             }
 
-            // Slight recency bonus for top recent items in the same project to preserve document/session continuity
+            // Slight recency bonus among relevant/verified items in the same project
             let recencyBonus = max(0.0, 0.06 - Double(index) * 0.004)
             let totalScore = (lexicalSim * multiplier) + qualityBonus + recencyBonus
             return (item, totalScore)
@@ -117,24 +136,26 @@ public enum ProjectMemoryRetriever {
         )
     }
 
-    /// Extracts word tokens and character bigrams so similarity works across English, Vietnamese, and CJK (Japanese/Chinese/Korean).
+    /// Extracts meaningful word tokens (for Latin/Vietnamese/code) and CJK character bigrams (for Japanese/Chinese/Korean).
     public static func extractFeatures(from text: String) -> Set<String> {
         let lower = text.lowercased().trimmingCharacters(in: .whitespacesAndNewlines)
         guard !lower.isEmpty else { return [] }
 
         var features = Set<String>()
 
-        // Word tokens
-        let words = lower.components(separatedBy: CharacterSet.alphanumerics.inverted).filter { $0.count >= 2 }
+        // Word tokens (skip trivial stopwords so unrelated sentences sharing "the"/"for" don't false-match)
+        let words = lower.components(separatedBy: CharacterSet.alphanumerics.inverted).filter {
+            $0.count >= 2 && !commonStopwords.contains($0)
+        }
         for w in words {
             features.insert("w:\(w)")
         }
 
-        // Character bigrams (compact cap to first 300 chars for speed)
-        let compact = Array(lower.replacingOccurrences(of: " ", with: "").prefix(300))
-        if compact.count >= 2 {
-            for i in 0..<(compact.count - 1) {
-                features.insert("b:\(compact[i])\(compact[i + 1])")
+        // Character bigrams strictly for CJK / Kana / Hangul scripts (which lack whitespace word boundaries)
+        let cjkChars = Array(lower.unicodeScalars.filter { $0.value >= 0x2E80 }.prefix(300))
+        if cjkChars.count >= 2 {
+            for i in 0..<(cjkChars.count - 1) {
+                features.insert("b:\(cjkChars[i])\(cjkChars[i + 1])")
             }
         }
         return features

@@ -84,12 +84,14 @@ public struct AppSettings: Codable, Equatable, Sendable {
     public var popupHeight: Double?
     public var activeProjectId: UUID
     public var enableAdaptiveLearning: Bool
+    public var hasMigratedToFastFlashV2: Bool
 
-    public static let defaultModel: String = "gemini-3.1-flash-lite"
+    public static let defaultModel: String = "gemini-3-flash-preview"
+    public static let fallbackModel: String = "gemini-3.1-flash-lite"
     public static let presetModels: [String] = [
+        "gemini-3-flash-preview",
         "gemini-3.1-flash-lite",
         "gemini-3.5-flash-lite",
-        "gemini-3-flash-preview",
         "gemini-3.5-flash"
     ]
 
@@ -281,7 +283,8 @@ Rules:
         popupWidth: Double? = nil,
         popupHeight: Double? = nil,
         activeProjectId: UUID = TranslationProject.defaultProjectId,
-        enableAdaptiveLearning: Bool = true
+        enableAdaptiveLearning: Bool = true,
+        hasMigratedToFastFlashV2: Bool = true
     ) {
         self.apiKeys = apiKeys
         let trimmedModel = selectedModel.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -312,6 +315,7 @@ Rules:
         self.popupHeight = popupHeight
         self.activeProjectId = activeProjectId
         self.enableAdaptiveLearning = enableAdaptiveLearning
+        self.hasMigratedToFastFlashV2 = hasMigratedToFastFlashV2
     }
 
     public init(from decoder: Decoder) throws {
@@ -349,5 +353,6 @@ Rules:
         self.popupHeight = try c.decodeIfPresent(Double.self, forKey: .popupHeight)
         self.activeProjectId = try c.decodeIfPresent(UUID.self, forKey: .activeProjectId) ?? TranslationProject.defaultProjectId
         self.enableAdaptiveLearning = try c.decodeIfPresent(Bool.self, forKey: .enableAdaptiveLearning) ?? true
+        self.hasMigratedToFastFlashV2 = try c.decodeIfPresent(Bool.self, forKey: .hasMigratedToFastFlashV2) ?? false
     }
 }

@@ -39,6 +39,7 @@ struct SuperTransTestRunner {
         testUpdateManagerVersionAndReleaseParsing()
         testCustomPromptPresetsAndVisibility()
         testLegacySettingsWithoutAutoPasteDecoding()
+        testFastLatencyOptimizationsAndFallback()
 
         print("--------------------------------------------------")
         print("SuperTrans Tests Completed: \(passed) passed, \(failed) failed.")
@@ -363,5 +364,190 @@ struct SuperTransTestRunner {
         assertEqual(decoded?.targetLanguage, "en", "Preserves targetLanguage from legacy JSON")
         assertEqual(decoded?.recordHistory, false, "Preserves recordHistory from legacy JSON")
         assertEqual(decoded?.capacity, 250, "Preserves capacity from legacy JSON")
+    }
+
+    final class MockGeminiURLProtocol: URLProtocol {
+        static var handler: ((URLRequest) throws -> (HTTPURLResponse, Data))?
+
+        override class func canInit(with request: URLRequest) -> Bool { true }
+        override class func canonicalRequest(for request: URLRequest) -> URLRequest { request }
+
+        override func startLoading() {
+            guard let handler = Self.handler else {
+                client?.urlProtocolDidFinishLoading(self)
+                return
+            }
+            do {
+                let (response, data) = try handler(request)
+                client?.urlProtocol(self, didReceive: response, cacheStoragePolicy: .notAllowed)
+                client?.urlProtocol(self, didLoad: data)
+                client?.urlProtocolDidFinishLoading(self)
+            } catch {
+                client?.urlProtocol(self, didFailWithError: error)
+            }
+        }
+
+        override func stopLoading() {}
+    }
+
+    static func testFastLatencyOptimizationsAndFallback() {
+        // 1. Default & Fallback model configuration
+        assertEqual(AppSettings.defaultModel, "gemini-3-flash-preview", "Default model is gemini-3-flash-preview")
+        assertEqual(AppSettings.fallbackModel, "gemini-3.1-flash-lite", "Fallback model is gemini-3.1-flash-lite")
+        assertEqual(
+            GeminiClient.candidateModels(for: "gemini-3-flash-preview"),
+            ["gemini-3-flash-preview", "gemini-3.1-flash-lite"],
+            "Candidate models chain includes primary then fallback"
+        )
+        assertEqual(
+            GeminiClient.candidateModels(for: "gemini-3.1-flash-lite"),
+            ["gemini-3.1-flash-lite", "gemini-3-flash-preview"],
+            "Candidate models chain reverses cleanly when fallback is selected as primary"
+        )
+
+        // 2. Thinking configuration across Gemini families
+        assertEqual(
+            GeminiClient.thinkingConfig(for: "gemini-3-flash-preview")?["thinkingLevel"] as? String,
+            "MINIMAL",
+            "gemini-3-flash-preview uses MINIMAL thinkingLevel"
+        )
+        assertEqual(
+            GeminiClient.thinkingConfig(for: "gemini-3.1-flash-lite")?["thinkingLevel"] as? String,
+            "MINIMAL",
+            "gemini-3.1-flash-lite also receives MINIMAL thinkingLevel"
+        )
+        assertEqual(
+            GeminiClient.thinkingConfig(for: "gemini-3.5-flash-lite")?["thinkingLevel"] as? String,
+            "MINIMAL",
+            "gemini-3.5-flash-lite uses MINIMAL thinkingLevel instead of unsupported thinkingBudget=0"
+        )
+        assertEqual(
+            GeminiClient.thinkingConfig(for: "gemini-3.8-flash")?["thinkingLevel"] as? String,
+            "LOW",
+            "gemini-3.8-flash uses LOW thinkingLevel"
+        )
+        assertEqual(
+            GeminiClient.thinkingConfig(for: "gemini-2.5-flash")?["thinkingBudget"] as? Int,
+            0,
+            "gemini-2.5-flash uses thinkingBudget=0"
+        )
+        assertTrue(
+            GeminiClient.thinkingConfig(for: "gemini-3.1-flash-tts-preview") == nil,
+            "TTS models omit thinkingConfig"
+        )
+
+        // 3. Smart ProjectMemoryRetriever filtering (no prompt bloat for unrelated history/glossary)
+        var project = TranslationProject(name: "Backend API")
+        project.glossary = [
+            GlossaryEntry(sourceTerm: "idempotency key", targetTerm: "khoá chống trùng lặp"),
+            GlossaryEntry(sourceTerm: "deadlock", targetTerm: "khoá chết")
+        ]
+        let unrelatedUnverified = TranslationItem(
+            contentType: .text,
+            sourceText: "Good morning team, have a great weekend!",
+            translatedText: "Chào buổi sáng cả nhóm, chúc cuối tuần vui vẻ!",
+            targetLanguage: "vi",
+            projectId: project.id,
+            isVerified: false
+        )
+        let relatedUnverified = TranslationItem(
+            contentType: .text,
+            sourceText: "Provide an idempotency key header when retrying POST requests.",
+            translatedText: "Cung cấp header khoá chống trùng lặp khi thử lại các yêu cầu POST.",
+            targetLanguage: "vi",
+            projectId: project.id,
+            isVerified: false
+        )
+
+        let ctxUnrelated = ProjectMemoryRetriever.retrieveContext(
+            project: project,
+            sourceText: "SELECT count(*) FROM orders WHERE status = 'pending';",
+            targetLanguage: "vi",
+            projectItems: [unrelatedUnverified, relatedUnverified]
+        )
+        assertEqual(ctxUnrelated.matchedGlossary.count, 0, "Unmatched glossary terms excluded for text translation")
+        assertEqual(ctxUnrelated.fewShotExamples.count, 0, "Unrelated unverified examples excluded to save prompt tokens")
+
+        let ctxRelated = ProjectMemoryRetriever.retrieveContext(
+            project: project,
+            sourceText: "Missing idempotency key when retrying POST request",
+            targetLanguage: "vi",
+            projectItems: [unrelatedUnverified, relatedUnverified]
+        )
+        assertEqual(ctxRelated.matchedGlossary.count, 1, "Matching glossary term included")
+        assertEqual(ctxRelated.fewShotExamples.count, 1, "Similar prior translation included")
+
+        // 4. One-time settings migration from gemini-3.1-flash-lite -> gemini-3-flash-preview
+        let tempDir = URL(fileURLWithPath: NSTemporaryDirectory())
+            .appendingPathComponent("SuperTransMigrationTest_\(UUID().uuidString)")
+        defer { try? FileManager.default.removeItem(at: tempDir) }
+        try? FileManager.default.createDirectory(at: tempDir, withIntermediateDirectories: true)
+        let oldSettingsJSON = """
+        {
+          "apiKeys": ["AIzaSyTestKey123456"],
+          "selectedModel": "gemini-3.1-flash-lite",
+          "targetLanguage": "vi"
+        }
+        """.data(using: .utf8)!
+        try? oldSettingsJSON.write(to: tempDir.appendingPathComponent("settings.json"))
+
+        let migratedStorage = StorageManager(baseDirectory: tempDir)
+        assertEqual(migratedStorage.settings.selectedModel, "gemini-3-flash-preview", "Migrates legacy gemini-3.1-flash-lite once to gemini-3-flash-preview")
+        assertTrue(migratedStorage.settings.hasMigratedToFastFlashV2, "Marks hasMigratedToFastFlashV2 = true")
+
+        // User manually chooses gemini-3.1-flash-lite afterwards -> preserved across reload!
+        var manualChoice = migratedStorage.settings
+        manualChoice.selectedModel = "gemini-3.1-flash-lite"
+        migratedStorage.settings = manualChoice
+        migratedStorage.flushDiskQueue()
+
+        let reloadedAfterManual = StorageManager(baseDirectory: tempDir)
+        assertEqual(reloadedAfterManual.settings.selectedModel, "gemini-3.1-flash-lite", "Respects manual model choice after one-time migration")
+
+        // 5. HTTP 503 High Demand auto-fallback without penalizing API key
+        let tempRotatorURL = URL(fileURLWithPath: NSTemporaryDirectory())
+            .appendingPathComponent("SuperTrans503Test_\(UUID().uuidString).json")
+        defer { try? FileManager.default.removeItem(at: tempRotatorURL) }
+        let rotator = APIKeyRotator(persistenceURL: tempRotatorURL)
+
+        let sessionCfg = URLSessionConfiguration.ephemeral
+        sessionCfg.protocolClasses = [MockGeminiURLProtocol.self]
+        let mockSession = URLSession(configuration: sessionCfg)
+        let client = GeminiClient(session: mockSession, keyRotator: rotator, textTimeout: 8.0, imageTimeout: 15.0)
+
+        var attemptedURLs: [String] = []
+        MockGeminiURLProtocol.handler = { req in
+            let urlStr = req.url?.absoluteString ?? ""
+            attemptedURLs.append(urlStr)
+            if urlStr.contains("gemini-3-flash-preview") {
+                let errData = """
+                {"error":{"code":503,"message":"This model is currently experiencing high demand.","status":"UNAVAILABLE"}}
+                """.data(using: .utf8)!
+                let resp = HTTPURLResponse(url: req.url!, statusCode: 503, httpVersion: "HTTP/2", headerFields: nil)!
+                return (resp, errData)
+            } else {
+                let okData = """
+                {"candidates":[{"content":{"parts":[{"text":"Xin chào từ model dự phòng"}]}}]}
+                """.data(using: .utf8)!
+                let resp = HTTPURLResponse(url: req.url!, statusCode: 200, httpVersion: "HTTP/2", headerFields: nil)!
+                return (resp, okData)
+            }
+        }
+
+        let sema = DispatchSemaphore(value: 0)
+        var fallbackResp: GeminiTranslationResponse?
+        let testKey = "AIzaSySingleUserKey9999"
+        let settings = AppSettings(apiKeys: [testKey], selectedModel: "gemini-3-flash-preview")
+
+        Task {
+            fallbackResp = try? await client.translateText("Hello", targetLanguage: "vi", settings: settings)
+            sema.signal()
+        }
+        _ = sema.wait(timeout: .now() + 5)
+
+        assertEqual(attemptedURLs.count, 2, "Attempted primary model then immediately fell back to backup model on 503")
+        assertEqual(fallbackResp?.translatedText, "Xin chào từ model dự phòng", "Returned translation from fallback model")
+        assertEqual(fallbackResp?.modelUsed, "gemini-3.1-flash-lite", "Recorded fallback modelUsed accurately")
+        assertEqual(rotator.status(for: testKey), .active, "API key remains .active and is NOT rate-limited on HTTP 503")
     }
 }

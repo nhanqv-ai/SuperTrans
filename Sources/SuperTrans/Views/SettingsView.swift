@@ -1332,14 +1332,14 @@ public struct SettingsView: View {
 
     private func modelDisplayLabel(for modelId: String) -> String {
         switch modelId {
-        case "gemini-3.1-flash-lite":
-            return isVi ? "gemini-3.1-flash-lite (Nhanh nhất — Khuyên dùng)" : "gemini-3.1-flash-lite (Fastest — Recommended)"
-        case "gemini-3.5-flash-lite":
-            return isVi ? "gemini-3.5-flash-lite (Rất nhanh)" : "gemini-3.5-flash-lite (Very Fast)"
         case "gemini-3-flash-preview":
-            return isVi ? "gemini-3-flash-preview (Cân bằng)" : "gemini-3-flash-preview (Balanced)"
+            return isVi ? "gemini-3-flash-preview (Nhanh nhất ~0.9s — Khuyên dùng)" : "gemini-3-flash-preview (Fastest ~0.9s — Recommended)"
+        case "gemini-3.1-flash-lite":
+            return isVi ? "gemini-3.1-flash-lite (Nhẹ — Tự động dự phòng)" : "gemini-3.1-flash-lite (Lightweight — Auto Fallback)"
+        case "gemini-3.5-flash-lite":
+            return isVi ? "gemini-3.5-flash-lite (Tiết kiệm — Phản hồi chậm hơn)" : "gemini-3.5-flash-lite (Lite — Higher Latency)"
         case "gemini-3.5-flash":
-            return isVi ? "gemini-3.5-flash (Chất lượng cao)" : "gemini-3.5-flash (High Quality)"
+            return isVi ? "gemini-3.5-flash (Chất lượng sâu — Phản hồi chậm)" : "gemini-3.5-flash (Deep Quality — Slow)"
         default:
             return modelId
         }
