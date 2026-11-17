@@ -523,6 +523,7 @@ public struct MainHistoryView: View {
         let shortcutNum = globalIndex < 9 ? (globalIndex + 1) : nil
         return HistoryRowView(
             item: item,
+            imageURL: storageManager.getImageURL(for: item),
             thumbnailURL: storageManager.getThumbnailURL(for: item),
             isSelected: isSelected,
             shortcutNumber: shortcutNum,
@@ -645,7 +646,11 @@ public struct MainHistoryView: View {
                 selectedIndex = ShortcutNavigator.moveUp(currentIndex: selectedIndex, totalCount: items.count)
                 if let idx = selectedIndex, idx >= 0 && idx < items.count {
                     let item = items[idx]
-                    DualPreviewPanel.shared.show(for: item, thumbnailURL: storageManager.getThumbnailURL(for: item))
+                    DualPreviewPanel.shared.show(
+                        for: item,
+                        imageURL: storageManager.getImageURL(for: item),
+                        fallbackThumbnailURL: storageManager.getThumbnailURL(for: item)
+                    )
                 }
                 return nil
             }
@@ -655,7 +660,11 @@ public struct MainHistoryView: View {
                 selectedIndex = ShortcutNavigator.moveDown(currentIndex: selectedIndex, totalCount: items.count)
                 if let idx = selectedIndex, idx >= 0 && idx < items.count {
                     let item = items[idx]
-                    DualPreviewPanel.shared.show(for: item, thumbnailURL: storageManager.getThumbnailURL(for: item))
+                    DualPreviewPanel.shared.show(
+                        for: item,
+                        imageURL: storageManager.getImageURL(for: item),
+                        fallbackThumbnailURL: storageManager.getThumbnailURL(for: item)
+                    )
                 }
                 return nil
             }

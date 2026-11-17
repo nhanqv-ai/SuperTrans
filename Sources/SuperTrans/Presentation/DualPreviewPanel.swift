@@ -2,23 +2,24 @@ import AppKit
 import SwiftUI
 import SuperTransCore
 
-/// Host view displaying both Original Content (Text or Image Thumbnail) and Full Translated Text on row hover.
+/// Host view displaying both Original Content (Text or Image) and Full Translated Text on row hover.
 public struct DualPreviewHostView: View {
     public let item: TranslationItem?
-    public let thumbnailURL: URL?
-    @State private var loadedImage: NSImage?
+    public let previewImage: NSImage?
 
-    public init(item: TranslationItem? = nil, thumbnailURL: URL? = nil) {
+    public init(item: TranslationItem? = nil, previewImage: NSImage? = nil) {
         self.item = item
-        self.thumbnailURL = thumbnailURL
+        self.previewImage = previewImage
     }
 
     public var body: some View {
         if let item = item {
             if item.isMasked {
                 maskedPreviewCard
+                    .id(item.id)
             } else {
                 unmaskedPreviewCard(for: item)
+                    .id(item.id)
             }
         } else {
             Color.clear.frame(width: 1, height: 1)
@@ -67,7 +68,7 @@ public struct DualPreviewHostView: View {
                     ZStack {
                         RoundedRectangle(cornerRadius: 6, style: .continuous)
                             .fill(Color.secondary.opacity(0.08))
-                        if let img = loadedImage {
+                        if let img = previewImage {
                             Image(nsImage: img)
                                 .resizable()
                                 .aspectRatio(contentMode: .fit)
@@ -141,19 +142,6 @@ public struct DualPreviewHostView: View {
             RoundedRectangle(cornerRadius: 10, style: .continuous)
                 .stroke(Color(nsColor: .separatorColor).opacity(0.45), lineWidth: 1)
         )
-        .onAppear {
-            loadImageIfNeeded()
-        }
-        .onChange(of: thumbnailURL) { _ in
-            loadImageIfNeeded()
-        }
-    }
-
-    private func loadImageIfNeeded() {
-        guard let item = item, item.contentType == .image, !item.isMasked else { return }
-        if let url = thumbnailURL, let img = NSImage(contentsOf: url) {
-            self.loadedImage = img
-        }
     }
 
     public static func truncatePreview(_ text: String, maxChars: Int) -> String {
@@ -172,6 +160,7 @@ public final class DualPreviewPanel: NSPanel {
     private var hostingView: NSHostingView<DualPreviewHostView>
     private var hideWorkItem: DispatchWorkItem?
     public private(set) var currentItemId: UUID?
+    public private(set) var displayedImage: NSImage?
 
     public init() {
         let root = DualPreviewHostView()
@@ -194,11 +183,29 @@ public final class DualPreviewPanel: NSPanel {
     }
 
     public func show(for item: TranslationItem, thumbnailURL: URL?) {
+        show(for: item, imageURL: nil, fallbackThumbnailURL: thumbnailURL)
+    }
+
+    public func show(for item: TranslationItem, imageURL: URL?, fallbackThumbnailURL: URL?) {
         hideWorkItem?.cancel()
         hideWorkItem = nil
         currentItemId = item.id
 
-        let newView = DualPreviewHostView(item: item, thumbnailURL: thumbnailURL)
+        let resolvedImage: NSImage?
+        if item.contentType == .image && !item.isMasked {
+            if let fullURL = imageURL, let fullImg = NSImage(contentsOf: fullURL) {
+                resolvedImage = fullImg
+            } else if let thumbURL = fallbackThumbnailURL, let thumbImg = NSImage(contentsOf: thumbURL) {
+                resolvedImage = thumbImg
+            } else {
+                resolvedImage = nil
+            }
+        } else {
+            resolvedImage = nil
+        }
+        self.displayedImage = resolvedImage
+
+        let newView = DualPreviewHostView(item: item, previewImage: resolvedImage)
         hostingView.rootView = newView
         hostingView.layoutSubtreeIfNeeded()
         let fitting = hostingView.fittingSize
@@ -229,16 +236,25 @@ public final class DualPreviewPanel: NSPanel {
         self.orderFrontRegardless()
     }
 
-    public func hide(immediate: Bool = false) {
+    public func hide(forItemId: UUID? = nil, immediate: Bool = false) {
+        if let expectedId = forItemId, let current = currentItemId, current != expectedId {
+            return
+        }
         hideWorkItem?.cancel()
         if immediate {
             currentItemId = nil
+            displayedImage = nil
             self.orderOut(nil)
             return
         }
         let work = DispatchWorkItem { [weak self] in
-            self?.currentItemId = nil
-            self?.orderOut(nil)
+            guard let self = self else { return }
+            if let expectedId = forItemId, let current = self.currentItemId, current != expectedId {
+                return
+            }
+            self.currentItemId = nil
+            self.displayedImage = nil
+            self.orderOut(nil)
         }
         hideWorkItem = work
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.08, execute: work)
