@@ -190,6 +190,7 @@ test: build
 		-Xlinker -rpath -Xlinker $(BUILD_DIR)/lib/$(HOST_ARCH) \
 		-parse-as-library \
 		Sources/SuperTrans/Presentation/CursorPopupFrameCalculator.swift \
+		Sources/SuperTrans/Presentation/DualPreviewPanel.swift \
 		Sources/SuperTrans/Services/ShortcutNavigator.swift \
 		Tests/SuperTransTests/SuperTransTests.swift \
 		-o $(BUILD_DIR)/bin/test_runner

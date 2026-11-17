@@ -4,6 +4,7 @@ import SuperTransCore
 
 public struct HistoryRowView: View {
     public let item: TranslationItem
+    public let imageURL: URL?
     public let thumbnailURL: URL?
     public let isSelected: Bool
     public let shortcutNumber: Int?
@@ -20,6 +21,7 @@ public struct HistoryRowView: View {
 
     public init(
         item: TranslationItem,
+        imageURL: URL? = nil,
         thumbnailURL: URL? = nil,
         isSelected: Bool = false,
         shortcutNumber: Int? = nil,
@@ -32,6 +34,7 @@ public struct HistoryRowView: View {
         onDelete: ((TranslationItem) -> Void)? = nil
     ) {
         self.item = item
+        self.imageURL = imageURL
         self.thumbnailURL = thumbnailURL
         self.isSelected = isSelected
         self.shortcutNumber = shortcutNumber
@@ -78,9 +81,13 @@ public struct HistoryRowView: View {
         .onHover { hovering in
             isHovered = hovering
             if hovering {
-                DualPreviewPanel.shared.show(for: item, thumbnailURL: thumbnailURL)
+                DualPreviewPanel.shared.show(
+                    for: item,
+                    imageURL: imageURL,
+                    fallbackThumbnailURL: thumbnailURL
+                )
             } else {
-                DualPreviewPanel.shared.hide()
+                DualPreviewPanel.shared.hide(forItemId: item.id)
             }
         }
         .contextMenu {

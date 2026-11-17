@@ -41,6 +41,7 @@ struct SuperTransTestRunner {
         testLegacySettingsWithoutAutoPasteDecoding()
         testFastLatencyOptimizationsAndFallback()
         testGlossaryCSVExportAndImport()
+        testDualPreviewImageSyncAcrossRows()
 
         print("--------------------------------------------------")
         print("SuperTrans Tests Completed: \(passed) passed, \(failed) failed.")
@@ -583,5 +584,75 @@ struct SuperTransTestRunner {
         assertEqual(decodedSemi.count, 1, "Supports semicolon-delimited CSV from regional Excel locales")
         assertEqual(decodedSemi.first?.sourceTerm, "webhook", "Parses semicolon source term")
         assertEqual(decodedSemi.first?.targetTerm, "điểm cuối nhận sự kiện", "Parses semicolon target term")
+    }
+
+    private static func makeSolidPNGData(width: Int, height: Int, color: NSColor) -> Data {
+        let rep = NSBitmapImageRep(
+            bitmapDataPlanes: nil,
+            pixelsWide: width,
+            pixelsHigh: height,
+            bitsPerSample: 8,
+            samplesPerPixel: 4,
+            hasAlpha: true,
+            isPlanar: false,
+            colorSpaceName: .deviceRGB,
+            bytesPerRow: 0,
+            bitsPerPixel: 0
+        )!
+        NSGraphicsContext.saveGraphicsState()
+        NSGraphicsContext.current = NSGraphicsContext(bitmapImageRep: rep)
+        color.setFill()
+        NSRect(x: 0, y: 0, width: width, height: height).fill()
+        NSGraphicsContext.restoreGraphicsState()
+        return rep.representation(using: .png, properties: [:])!
+    }
+
+    static func testDualPreviewImageSyncAcrossRows() {
+        _ = NSApplication.shared
+        let tempDir = URL(fileURLWithPath: NSTemporaryDirectory())
+            .appendingPathComponent("SuperTransDualPreviewTest_\(UUID().uuidString)")
+        try? FileManager.default.createDirectory(at: tempDir, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: tempDir) }
+
+        let url1 = tempDir.appendingPathComponent("img1.png")
+        let url2 = tempDir.appendingPathComponent("img2.png")
+        try? makeSolidPNGData(width: 100, height: 100, color: .systemBlue).write(to: url1)
+        try? makeSolidPNGData(width: 400, height: 50, color: .systemRed).write(to: url2)
+
+        let item1 = TranslationItem(
+            contentType: .image,
+            translatedText: "Phương án 3: Không đăng ký vào DB",
+            targetLanguage: "vi",
+            imageFileName: "img1.png",
+            thumbnailFileName: "img1.png",
+            imageWidth: 100,
+            imageHeight: 100
+        )
+        let item2 = TranslationItem(
+            contentType: .image,
+            translatedText: "Tính toán điện năng tự cung cấp",
+            targetLanguage: "vi",
+            imageFileName: "img2.png",
+            thumbnailFileName: "img2.png",
+            imageWidth: 400,
+            imageHeight: 50
+        )
+
+        let panel = DualPreviewPanel()
+        defer { panel.hide(immediate: true) }
+
+        panel.show(for: item1, imageURL: url1, fallbackThumbnailURL: url1)
+        RunLoop.main.run(until: Date().addingTimeInterval(0.05))
+        assertEqual(panel.currentItemId, item1.id, "Preview panel tracks item1 ID")
+        assertEqual(panel.displayedImage?.size, NSSize(width: 100, height: 100), "Preview panel loads item1 100x100 image")
+
+        // Simulate hovering directly from Row 1 to Row 2 (item1 onHover(false) races with item2 onHover(true))
+        panel.show(for: item2, imageURL: url2, fallbackThumbnailURL: url2)
+        panel.hide(forItemId: item1.id, immediate: false)
+        RunLoop.main.run(until: Date().addingTimeInterval(0.12))
+
+        assertEqual(panel.currentItemId, item2.id, "Stale onHover(false) from item1 must NOT clear item2 preview")
+        assertTrue(panel.isVisible, "Preview panel stays visible for item2 after stale item1 hover exit")
+        assertEqual(panel.displayedImage?.size, NSSize(width: 400, height: 50), "Preview panel updates image immediately to item2 400x50 image without sticking on item1")
     }
 }
