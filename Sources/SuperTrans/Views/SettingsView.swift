@@ -70,25 +70,14 @@ public struct SettingsView: View {
     @State private var showingRenameProjectPopover: Bool = false
     @State private var renameProjectDraft: String = ""
     @State private var showingVerifiedExamplesPopover: Bool = false
-    @State private var showingPinnedItemsPopover: Bool = false
     @State private var glossaryStatusMessage: String? = nil
-    @State private var copiedGlossaryEntryId: UUID? = nil
     @State private var showingClearGlossaryConfirmation: Bool = false
     @State private var showingAPIKeyGuidePopover: Bool = false
-    @State private var copiedAPIKeyFeedback: String? = nil
-    @State private var didCopyAllKeysFeedback: Bool = false
-    @State private var didCopyPromptFeedback: Bool = false
-    @State private var isTestingSelectedModel: Bool = false
-    @State private var selectedModelTestStatus: Bool? = nil
-    @State private var didCopyVersionInfoFeedback: Bool = false
     @State private var showingDeleteProjectConfirmation: Bool = false
     @State private var pendingDeleteCustomPromptId: UUID? = nil
     @State private var backupStatusMessage: String? = nil
-    @State private var copiedPopoverItemId: UUID? = nil
-    @State private var didCopyAllPopoverItemsFeedback: Bool = false
     @State private var popoverItemsSearchQuery: String = ""
     @State private var pendingDeleteAPIKey: String? = nil
-    @State private var newCustomPromptNameInput: String = ""
     @State private var selectedInspectorPromptId: String? = nil
     @FocusState private var isCustomPromptNameFocused: Bool
 
@@ -279,20 +268,6 @@ public struct SettingsView: View {
                     .labelsHidden()
                     .pickerStyle(.menu)
                     .frame(width: 210)
-
-                    if storageManager.settings.targetLanguage != AppSettings.defaultTargetLanguage {
-                        Button(action: {
-                            var s = storageManager.settings
-                            s.targetLanguage = AppSettings.defaultTargetLanguage
-                            storageManager.settings = s
-                        }) {
-                            Image(systemName: "arrow.counterclockwise")
-                                .font(.system(size: 10))
-                        }
-                        .buttonStyle(.bordered)
-                        .controlSize(.small)
-                        .help(isVi ? "Đặt lại về Tiếng Việt (Mặc định)" : "Reset to Vietnamese (Default)")
-                    }
                 }
 
                 HStack(spacing: 8) {
@@ -315,20 +290,6 @@ public struct SettingsView: View {
                     .labelsHidden()
                     .pickerStyle(.menu)
                     .frame(width: 210)
-
-                    if storageManager.settings.language != "system" {
-                        Button(action: {
-                            var s = storageManager.settings
-                            s.language = "system"
-                            storageManager.settings = s
-                        }) {
-                            Image(systemName: "arrow.counterclockwise")
-                                .font(.system(size: 10))
-                        }
-                        .buttonStyle(.bordered)
-                        .controlSize(.small)
-                        .help(isVi ? "Đặt lại về mặc định hệ thống (System Default)" : "Reset to System Default")
-                    }
                 }
 
                 HStack(spacing: 8) {
@@ -360,33 +321,6 @@ public struct SettingsView: View {
                     Text(isVi ? "bản dịch" : "items")
                         .font(.system(size: 11.5))
                         .foregroundColor(.secondary)
-
-                    Menu(isVi ? "Mức nhanh" : "Presets") {
-                        ForEach([50, 100, 250, 500, 1000], id: \.self) { presetCap in
-                            Button(presetCap == 100 ? (isVi ? "100 (Mặc định)" : "100 (Default)") : "\(presetCap)") {
-                                var s = storageManager.settings
-                                s.capacity = presetCap
-                                storageManager.settings = s
-                            }
-                        }
-                    }
-                    .menuStyle(.borderedButton)
-                    .controlSize(.small)
-                    .fixedSize()
-
-                    if storageManager.settings.capacity != 100 {
-                        Button(action: {
-                            var s = storageManager.settings
-                            s.capacity = 100
-                            storageManager.settings = s
-                        }) {
-                            Image(systemName: "arrow.counterclockwise")
-                                .font(.system(size: 10))
-                        }
-                        .buttonStyle(.bordered)
-                        .controlSize(.small)
-                        .help(isVi ? "Đặt lại về 100 bản dịch (Mặc định)" : "Reset to 100 items (Default)")
-                    }
                 }
 
                 HStack(spacing: 8) {
@@ -399,56 +333,19 @@ public struct SettingsView: View {
                             .font(.system(size: 11, weight: .medium, design: .monospaced))
                             .foregroundColor(.primary)
 
-                        Button(action: {
+                        Button(isVi ? "Đặt lại tự động" : "Reset Auto-fit") {
                             var s = storageManager.settings
                             s.popupWidth = nil
                             s.popupHeight = nil
                             storageManager.settings = s
-                        }) {
-                            Image(systemName: "arrow.counterclockwise")
-                                .font(.system(size: 10))
                         }
                         .buttonStyle(.bordered)
-                        .controlSize(.small)
-                        .help(isVi ? "Đặt lại tự động co giãn theo nội dung" : "Reset to auto-fit content")
+                        .controlSize(.mini)
                     } else {
                         Text(isVi ? "Tự động co giãn theo nội dung" : "Auto-fit content")
                             .font(.system(size: 11))
                             .foregroundColor(.secondary)
                     }
-
-                    Spacer()
-
-                    Menu(isVi ? "Cỡ nhanh" : "Presets") {
-                        Button(isVi ? "Tự động co giãn (Mặc định)" : "Auto-fit Content (Default)") {
-                            var s = storageManager.settings
-                            s.popupWidth = nil
-                            s.popupHeight = nil
-                            storageManager.settings = s
-                        }
-                        Divider()
-                        Button(isVi ? "Nhỏ gọn (420 × 280 px)" : "Compact (420 × 280 px)") {
-                            var s = storageManager.settings
-                            s.popupWidth = 420
-                            s.popupHeight = 280
-                            storageManager.settings = s
-                        }
-                        Button(isVi ? "Tiêu chuẩn (520 × 360 px)" : "Standard (520 × 360 px)") {
-                            var s = storageManager.settings
-                            s.popupWidth = 520
-                            s.popupHeight = 360
-                            storageManager.settings = s
-                        }
-                        Button(isVi ? "Rộng rãi (640 × 440 px)" : "Spacious (640 × 440 px)") {
-                            var s = storageManager.settings
-                            s.popupWidth = 640
-                            s.popupHeight = 440
-                            storageManager.settings = s
-                        }
-                    }
-                    .menuStyle(.borderedButton)
-                    .controlSize(.small)
-                    .fixedSize()
                 }
             }
         }
@@ -529,42 +426,10 @@ public struct SettingsView: View {
     }
 
     private var shortcutsCard: some View {
-        let hasCustomShortcut =
-            storageManager.settings.translateHotKeyKeyCode != AppSettings.defaultTranslateHotKeyKeyCode ||
-            storageManager.settings.translateHotKeyModifiers != AppSettings.defaultTranslateHotKeyModifiers ||
-            storageManager.settings.historyHotKeyKeyCode != AppSettings.defaultHistoryHotKeyKeyCode ||
-            storageManager.settings.historyHotKeyModifiers != AppSettings.defaultHistoryHotKeyModifiers
-
-        return VStack(alignment: .leading, spacing: 6) {
-            HStack {
-                Text(loc.tr(.tabShortcuts))
-                    .font(.system(size: 12.5, weight: .semibold))
-                    .foregroundColor(.primary)
-
-                Spacer()
-
-                if hasCustomShortcut {
-                    Button(action: {
-                        stopShortcutRecording()
-                        var s = storageManager.settings
-                        s.translateHotKeyKeyCode = AppSettings.defaultTranslateHotKeyKeyCode
-                        s.translateHotKeyModifiers = AppSettings.defaultTranslateHotKeyModifiers
-                        s.historyHotKeyKeyCode = AppSettings.defaultHistoryHotKeyKeyCode
-                        s.historyHotKeyModifiers = AppSettings.defaultHistoryHotKeyModifiers
-                        storageManager.settings = s
-                    }) {
-                        HStack(spacing: 3) {
-                            Image(systemName: "arrow.counterclockwise")
-                                .font(.system(size: 9.5))
-                            Text(isVi ? "Đặt lại mặc định" : "Reset All")
-                                .font(.system(size: 10.5))
-                        }
-                    }
-                    .buttonStyle(.bordered)
-                    .controlSize(.mini)
-                    .help(loc.tr(.resetDefaultShortcutButton))
-                }
-            }
+        VStack(alignment: .leading, spacing: 6) {
+            Text(loc.tr(.tabShortcuts))
+                .font(.system(size: 12.5, weight: .semibold))
+                .foregroundColor(.primary)
 
             // Row 1: Translate Shortcut
             HStack(spacing: 8) {
@@ -602,24 +467,9 @@ public struct SettingsView: View {
                 }
 
                 Spacer()
-
-                Menu(isVi ? "Chọn nhanh" : "Presets") {
-                    Button("Option + T (Default)") {
-                        applyShortcut(forTranslate: true, keyCode: 17, modifiers: UInt32(optionKey))
-                    }
-                    Button("Option + D") {
-                        applyShortcut(forTranslate: true, keyCode: 2, modifiers: UInt32(optionKey))
-                    }
-                    Button("Cmd + Shift + T") {
-                        applyShortcut(forTranslate: true, keyCode: 17, modifiers: UInt32(cmdKey | shiftKey))
-                    }
-                }
-                .menuStyle(.borderedButton)
-                .controlSize(.small)
-                .fixedSize()
             }
 
-            // Accessibility status & permission actions for Quick Translate selection grab
+            // Accessibility status & permission action for Quick Translate selection grab
             HStack(spacing: 6) {
                 Image(systemName: isAccessibilityTrusted ? "checkmark.circle.fill" : "exclamationmark.triangle")
                     .font(.system(size: 10))
@@ -632,20 +482,6 @@ public struct SettingsView: View {
                 Spacer()
 
                 if !isAccessibilityTrusted {
-                    Button(isVi ? "Kiểm tra lại" : "Recheck") {
-                        isAccessibilityTrusted = accessibilityService.checkAccessibilityPermission()
-                    }
-                    .buttonStyle(.bordered)
-                    .controlSize(.small)
-                    .font(.system(size: 10.5))
-
-                    Button(isVi ? "Mở Cài đặt Hệ thống" : "System Settings") {
-                        accessibilityService.openAccessibilitySettings()
-                    }
-                    .buttonStyle(.bordered)
-                    .controlSize(.small)
-                    .font(.system(size: 10.5))
-
                     Button(loc.tr(.grantPermissionButton)) {
                         isAccessibilityTrusted = accessibilityService.resetAndRequestAccessibilityPermission()
                     }
@@ -692,21 +528,6 @@ public struct SettingsView: View {
                 }
 
                 Spacer()
-
-                Menu(isVi ? "Chọn nhanh" : "Presets") {
-                    Button("Option + Shift + T (Default)") {
-                        applyShortcut(forTranslate: false, keyCode: 17, modifiers: UInt32(optionKey | shiftKey))
-                    }
-                    Button("Option + H") {
-                        applyShortcut(forTranslate: false, keyCode: 4, modifiers: UInt32(optionKey))
-                    }
-                    Button("Cmd + Shift + Y") {
-                        applyShortcut(forTranslate: false, keyCode: 16, modifiers: UInt32(cmdKey | shiftKey))
-                    }
-                }
-                .menuStyle(.borderedButton)
-                .controlSize(.small)
-                .fixedSize()
             }
         }
         .padding(9)
@@ -749,20 +570,7 @@ public struct SettingsView: View {
         .buttonStyle(.plain)
     }
 
-    private func applyShortcut(forTranslate: Bool, keyCode: UInt32, modifiers: UInt32) {
-        stopShortcutRecording()
-        var s = storageManager.settings
-        if forTranslate {
-            s.translateHotKeyKeyCode = keyCode
-            s.translateHotKeyModifiers = modifiers
-        } else {
-            s.historyHotKeyKeyCode = keyCode
-            s.historyHotKeyModifiers = modifiers
-        }
-        storageManager.settings = s
-    }
-
-    // MARK: - Tab 2: Gemini AI (Multi-Key Rotation, Verified Fast Models, Prompt)
+    // MARK: - Tab 2: Gemini AI (Multi-Key Rotation, Verified Fast Models)
 
     private var geminiTabContent: some View {
         VStack(spacing: 8) {
@@ -783,7 +591,6 @@ public struct SettingsView: View {
             if case .invalid = APIKeyRotator.shared.status(for: key, now: statusClockNow) { return true }
             return false
         }
-        let allRevealed = !validKeys.isEmpty && validKeys.allSatisfy { revealedKeys.contains($0) }
 
         return VStack(alignment: .leading, spacing: 6) {
             HStack {
@@ -802,36 +609,26 @@ public struct SettingsView: View {
                 .font(.system(size: 10.5))
                 .foregroundColor(.secondary)
 
-            // Input bar with both Cmd+V support AND 1-click "Dán & Thêm" (Paste & Add) button
             HStack(spacing: 6) {
-                TextField(loc.tr(.addAPIKeyPlaceholder), text: $newAPIKeyInput)
-                    .textFieldStyle(.roundedBorder)
-                    .font(.system(size: 11.5, design: .monospaced))
-                    .onSubmit {
-                        addKeysFromInput()
-                    }
+                ZStack(alignment: .trailing) {
+                    TextField(loc.tr(.addAPIKeyPlaceholder), text: $newAPIKeyInput)
+                        .textFieldStyle(.roundedBorder)
+                        .font(.system(size: 11.5, design: .monospaced))
+                        .onSubmit {
+                            addKeysFromInput()
+                        }
 
-                if !newAPIKeyInput.isEmpty {
-                    Button(action: { newAPIKeyInput = "" }) {
-                        Image(systemName: "xmark.circle.fill")
-                            .font(.system(size: 11))
-                            .foregroundColor(.secondary)
-                    }
-                    .buttonStyle(.borderless)
-                    .help(isVi ? "Xoá ô nhập" : "Clear input")
-                }
-
-                Button(action: pasteAndAddKeyFromClipboard) {
-                    HStack(spacing: 3) {
-                        Image(systemName: "doc.on.clipboard")
-                            .font(.system(size: 10))
-                        Text(isVi ? "Dán & Thêm" : "Paste & Add")
-                            .font(.system(size: 11, weight: .medium))
+                    if !newAPIKeyInput.isEmpty {
+                        Button(action: { newAPIKeyInput = "" }) {
+                            Image(systemName: "xmark.circle.fill")
+                                .font(.system(size: 11))
+                                .foregroundColor(.secondary)
+                        }
+                        .buttonStyle(.plain)
+                        .padding(.trailing, 6)
+                        .help(isVi ? "Xoá ô nhập" : "Clear input")
                     }
                 }
-                .buttonStyle(.bordered)
-                .controlSize(.small)
-                .help(isVi ? "Dán trực tiếp API Key từ Clipboard và thêm vào danh sách" : "Paste API key from clipboard and add immediately")
 
                 Button(action: addKeysFromInput) {
                     Text(loc.tr(.addAPIKeyButton))
@@ -842,7 +639,6 @@ public struct SettingsView: View {
                 .disabled(newAPIKeyInput.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
             }
 
-            // Key List Container (SuperClip list box style)
             if storageManager.settings.validAPIKeys.isEmpty {
                 RoundedRectangle(cornerRadius: 6, style: .continuous)
                     .fill(Color(nsColor: .textBackgroundColor))
@@ -855,35 +651,8 @@ public struct SettingsView: View {
                             Text(loc.tr(.noAPIKeysConfigured))
                                 .font(.system(size: 11))
                                 .foregroundColor(.secondary)
-
-                            HStack(spacing: 8) {
-                                Button(action: pasteAndAddKeyFromClipboard) {
-                                    HStack(spacing: 4) {
-                                        Image(systemName: "doc.on.clipboard")
-                                            .font(.system(size: 10))
-                                        Text(isVi ? "Dán Key từ Clipboard" : "Paste from Clipboard")
-                                            .font(.system(size: 11, weight: .medium))
-                                    }
-                                }
-                                .buttonStyle(.borderedProminent)
-                                .controlSize(.small)
-
-                                Button(action: {
-                                    if let url = URL(string: "https://aistudio.google.com/app/apikey") {
-                                        NSWorkspace.shared.open(url)
-                                    }
-                                }) {
-                                    HStack(spacing: 4) {
-                                        Image(systemName: "safari")
-                                            .font(.system(size: 10))
-                                        Text(isVi ? "Lấy Key miễn phí (AI Studio)" : "Get Free Key (AI Studio)")
-                                            .font(.system(size: 11, weight: .medium))
-                                    }
-                                }
-                                .buttonStyle(.bordered)
-                                .controlSize(.small)
-                            }
-                            .padding(.top, 2)
+                                .multilineTextAlignment(.center)
+                                .padding(.horizontal, 16)
                         }
                     )
                     .overlay(
@@ -925,6 +694,7 @@ public struct SettingsView: View {
                     }
                     .buttonStyle(.bordered)
                     .controlSize(.small)
+                    .fixedSize()
                     .disabled(isTestingAllKeys)
 
                     Button(action: {
@@ -936,39 +706,7 @@ public struct SettingsView: View {
                     }
                     .buttonStyle(.bordered)
                     .controlSize(.small)
-
-                    Button(action: {
-                        if allRevealed {
-                            revealedKeys.removeAll()
-                        } else {
-                            revealedKeys = Set(validKeys)
-                        }
-                    }) {
-                        Image(systemName: allRevealed ? "eye.slash" : "eye")
-                            .font(.system(size: 10.5))
-                    }
-                    .buttonStyle(.bordered)
-                    .controlSize(.small)
-                    .help(allRevealed
-                          ? (isVi ? "Ẩn tất cả API Key" : "Hide all API Keys")
-                          : (isVi ? "Hiện tất cả API Key" : "Show all API Keys"))
-
-                    Button(action: {
-                        let joined = validKeys.joined(separator: "\n")
-                        NSPasteboard.general.clearContents()
-                        NSPasteboard.general.setString(joined, forType: .string)
-                        didCopyAllKeysFeedback = true
-                        DispatchQueue.main.asyncAfter(deadline: .now() + 1.4) {
-                            didCopyAllKeysFeedback = false
-                        }
-                    }) {
-                        Image(systemName: didCopyAllKeysFeedback ? "checkmark" : "doc.on.doc")
-                            .font(.system(size: 10))
-                            .foregroundColor(didCopyAllKeysFeedback ? .green : .primary)
-                    }
-                    .buttonStyle(.bordered)
-                    .controlSize(.small)
-                    .help(isVi ? "Sao chép toàn bộ danh sách API Key vào Clipboard" : "Copy all API Keys to Clipboard")
+                    .fixedSize()
 
                     if !invalidKeys.isEmpty {
                         Button(action: {
@@ -986,27 +724,9 @@ public struct SettingsView: View {
                         }
                         .buttonStyle(.bordered)
                         .controlSize(.small)
-                        .help(isVi ? "Xoá tất cả các API Key không hợp lệ khỏi danh sách" : "Remove all invalid API Keys from the list")
+                        .fixedSize()
                     }
                 }
-
-                Menu {
-                    Button(isVi ? "Nhập danh sách API Key từ tệp (.txt)..." : "Import API Keys from File (.txt)...") {
-                        importAPIKeysFromFilePanel()
-                    }
-                    if !validKeys.isEmpty {
-                        Button(isVi ? "Xuất danh sách API Key ra tệp (.txt)..." : "Export API Keys to File (.txt)...") {
-                            exportAPIKeysToFilePanel()
-                        }
-                    }
-                } label: {
-                    Image(systemName: "square.and.arrow.up.on.square")
-                        .font(.system(size: 10))
-                }
-                .menuStyle(.borderedButton)
-                .controlSize(.small)
-                .fixedSize()
-                .help(isVi ? "Nhập hoặc xuất danh sách API Key bằng tệp (.txt)" : "Import or export API Keys file (.txt)")
 
                 Spacer()
 
@@ -1019,10 +739,12 @@ public struct SettingsView: View {
                         Text(isVi ? "Hướng dẫn tạo Key" : "How to get API Key")
                             .font(.system(size: 11, weight: .medium))
                             .underline()
+                            .lineLimit(1)
                     }
                     .foregroundColor(.accentColor)
                 }
                 .buttonStyle(.plain)
+                .fixedSize()
                 .popover(isPresented: $showingAPIKeyGuidePopover, arrowEdge: .top) {
                     apiKeyGuidePopoverContent
                 }
@@ -1053,13 +775,13 @@ public struct SettingsView: View {
                     .font(.system(size: 11.5))
 
                 Text(isVi
-                     ? "2. Bấm nút \"Create API key\" → Chọn \"Create API key in new project\" → Sao chép (Copy) mã key bắt đầu bằng AIzaSy..."
+                     ? "2. Bấm nút \"Create API key\" → Chọn \"Create API key in new project\" → Sao chép mã key bắt đầu bằng AIzaSy..."
                      : "2. Click \"Create API key\" → Select \"Create API key in new project\" → Copy the generated key (starts with AIzaSy...).")
                     .font(.system(size: 11.5))
 
                 Text(isVi
-                     ? "3. Quay lại cửa sổ này và bấm nút \"Dán & Thêm\"."
-                     : "3. Return here and click \"Paste & Add\".")
+                     ? "3. Dán (Cmd + V) vào ô nhập phía trên rồi bấm \"Thêm Key\"."
+                     : "3. Paste (Cmd + V) into the input field above and click \"Add Key\".")
                     .font(.system(size: 11.5))
 
                 Text(isVi
@@ -1071,46 +793,25 @@ public struct SettingsView: View {
             }
             .fixedSize(horizontal: false, vertical: true)
 
-            HStack {
-                Button(action: {
-                    if let url = URL(string: "https://aistudio.google.com/app/apikey") {
-                        NSWorkspace.shared.open(url)
-                    }
-                }) {
-                    HStack(spacing: 5) {
-                        Image(systemName: "safari")
-                            .font(.system(size: 11, weight: .semibold))
-                        Text(isVi ? "Mở Google AI Studio (aistudio.google.com)" : "Open Google AI Studio (aistudio.google.com)")
-                            .font(.system(size: 11.5, weight: .semibold))
-                        Image(systemName: "arrow.up.forward")
-                            .font(.system(size: 9.5, weight: .bold))
-                    }
-                    .padding(.horizontal, 10)
-                    .padding(.vertical, 6)
-                    .background(RoundedRectangle(cornerRadius: 6).fill(Color.accentColor))
-                    .foregroundColor(.white)
+            Button(action: {
+                if let url = URL(string: "https://aistudio.google.com/app/apikey") {
+                    NSWorkspace.shared.open(url)
                 }
-                .buttonStyle(.plain)
-
-                Spacer()
-
-                Button(action: {
-                    pasteAndAddKeyFromClipboard()
-                    showingAPIKeyGuidePopover = false
-                }) {
-                    HStack(spacing: 4) {
-                        Image(systemName: "doc.on.clipboard")
-                            .font(.system(size: 10.5, weight: .semibold))
-                        Text(isVi ? "Dán & Thêm ngay" : "Paste & Add")
-                            .font(.system(size: 11, weight: .medium))
-                    }
-                    .padding(.horizontal, 9)
-                    .padding(.vertical, 6)
-                    .background(RoundedRectangle(cornerRadius: 6).fill(Color.secondary.opacity(0.14)))
-                    .foregroundColor(.primary)
+            }) {
+                HStack(spacing: 5) {
+                    Image(systemName: "safari")
+                        .font(.system(size: 11, weight: .semibold))
+                    Text(isVi ? "Mở Google AI Studio (aistudio.google.com)" : "Open Google AI Studio (aistudio.google.com)")
+                        .font(.system(size: 11.5, weight: .semibold))
+                    Image(systemName: "arrow.up.forward")
+                        .font(.system(size: 9.5, weight: .bold))
                 }
-                .buttonStyle(.plain)
+                .padding(.horizontal, 10)
+                .padding(.vertical, 6)
+                .background(RoundedRectangle(cornerRadius: 6).fill(Color.accentColor))
+                .foregroundColor(.white)
             }
+            .buttonStyle(.plain)
             .padding(.top, 2)
         }
         .padding(14)
@@ -1121,39 +822,12 @@ public struct SettingsView: View {
         let isRevealed = revealedKeys.contains(key)
         let isTesting = testingKeys.contains(key)
         let status = APIKeyRotator.shared.status(for: key, now: statusClockNow)
-        let totalKeys = storageManager.settings.validAPIKeys.count
 
-        return HStack(spacing: 5) {
+        return HStack(spacing: 6) {
             Text("#\(index + 1)")
                 .font(.system(size: 10, weight: .bold, design: .monospaced))
                 .foregroundColor(.secondary)
                 .frame(width: 22, alignment: .leading)
-
-            if totalKeys > 1 {
-                HStack(spacing: 1) {
-                    Button(action: {
-                        moveAPIKey(at: index, offset: -1)
-                    }) {
-                        Image(systemName: "chevron.up")
-                            .font(.system(size: 8.5, weight: .bold))
-                            .frame(width: 13, height: 16)
-                    }
-                    .buttonStyle(.borderless)
-                    .disabled(index == 0)
-                    .help(isVi ? "Đưa Key lên ưu tiên trước" : "Move key up")
-
-                    Button(action: {
-                        moveAPIKey(at: index, offset: 1)
-                    }) {
-                        Image(systemName: "chevron.down")
-                            .font(.system(size: 8.5, weight: .bold))
-                            .frame(width: 13, height: 16)
-                    }
-                    .buttonStyle(.borderless)
-                    .disabled(index >= totalKeys - 1)
-                    .help(isVi ? "Đưa Key xuống dưới" : "Move key down")
-                }
-            }
 
             Text(isRevealed ? key : APIKeyRotator.maskKey(key))
                 .font(.system(size: 11, design: .monospaced))
@@ -1177,24 +851,6 @@ public struct SettingsView: View {
             }
             .buttonStyle(.borderless)
             .help(isRevealed ? (isVi ? "Ẩn API Key" : "Hide API Key") : (isVi ? "Hiện API Key" : "Show API Key"))
-
-            Button(action: {
-                NSPasteboard.general.clearContents()
-                NSPasteboard.general.setString(key, forType: .string)
-                copiedAPIKeyFeedback = key
-                DispatchQueue.main.asyncAfter(deadline: .now() + 1.2) {
-                    if copiedAPIKeyFeedback == key {
-                        copiedAPIKeyFeedback = nil
-                    }
-                }
-            }) {
-                Image(systemName: copiedAPIKeyFeedback == key ? "checkmark" : "doc.on.doc")
-                    .font(.system(size: 10))
-                    .foregroundColor(copiedAPIKeyFeedback == key ? .green : .secondary)
-                    .frame(width: 18, height: 18)
-            }
-            .buttonStyle(.borderless)
-            .help(isVi ? "Sao chép API Key này" : "Copy this API Key")
 
             Button(action: {
                 testSingleKey(key)
@@ -1243,38 +899,6 @@ public struct SettingsView: View {
             RoundedRectangle(cornerRadius: 4, style: .continuous)
                 .fill(Color.secondary.opacity(0.06))
         )
-        .contextMenu {
-            if index > 0 {
-                Button(isVi ? "Đặt làm Key ưu tiên #1" : "Make Primary Key (#1)") {
-                    moveAPIKey(at: index, offset: -index)
-                }
-                Divider()
-            }
-            Button(isVi ? "Kiểm tra Key này" : "Test This Key") {
-                testSingleKey(key)
-            }
-            Button(isVi ? "Sao chép API Key" : "Copy API Key") {
-                NSPasteboard.general.clearContents()
-                NSPasteboard.general.setString(key, forType: .string)
-                copiedAPIKeyFeedback = key
-                DispatchQueue.main.asyncAfter(deadline: .now() + 1.2) {
-                    if copiedAPIKeyFeedback == key {
-                        copiedAPIKeyFeedback = nil
-                    }
-                }
-            }
-            Button(isRevealed ? (isVi ? "Ẩn API Key" : "Hide API Key") : (isVi ? "Hiện API Key" : "Show API Key")) {
-                if isRevealed {
-                    revealedKeys.remove(key)
-                } else {
-                    revealedKeys.insert(key)
-                }
-            }
-            Divider()
-            Button(isVi ? "Xoá API Key..." : "Remove API Key...", role: .destructive) {
-                pendingDeleteAPIKey = key
-            }
-        }
     }
 
     @ViewBuilder
@@ -1339,7 +963,6 @@ public struct SettingsView: View {
                 return storageManager.settings.selectedModel
             },
             set: { val in
-                selectedModelTestStatus = nil
                 if val == "__custom__" {
                     isCustomModelMode = true
                 } else {
@@ -1371,57 +994,17 @@ public struct SettingsView: View {
                 .labelsHidden()
                 .pickerStyle(.menu)
                 .frame(maxWidth: .infinity, alignment: .leading)
-
-                if storageManager.settings.selectedModel != AppSettings.defaultModel || showCustomInput {
-                    Button(action: {
-                        isCustomModelMode = false
-                        selectedModelTestStatus = nil
-                        var s = storageManager.settings
-                        s.selectedModel = AppSettings.defaultModel
-                        storageManager.settings = s
-                    }) {
-                        Image(systemName: "arrow.counterclockwise")
-                            .font(.system(size: 10.5))
-                    }
-                    .buttonStyle(.bordered)
-                    .controlSize(.small)
-                    .help(isVi ? "Đặt lại về Model nhanh nhất khuyên dùng (\(AppSettings.defaultModel))" : "Reset to fastest recommended model (\(AppSettings.defaultModel))")
-                }
-
-                if !storageManager.settings.validAPIKeys.isEmpty {
-                    Button(action: testSelectedModel) {
-                        HStack(spacing: 4) {
-                            if isTestingSelectedModel {
-                                ProgressView().controlSize(.mini)
-                            } else if let status = selectedModelTestStatus {
-                                Image(systemName: status ? "checkmark.circle.fill" : "exclamationmark.triangle.fill")
-                                    .font(.system(size: 10))
-                                    .foregroundColor(status ? .green : .orange)
-                            } else {
-                                Image(systemName: "bolt.horizontal")
-                                    .font(.system(size: 10))
-                            }
-                            Text(isVi ? "Kiểm tra Model" : "Test Model")
-                                .font(.system(size: 10.5, weight: .medium))
-                        }
-                    }
-                    .buttonStyle(.bordered)
-                    .controlSize(.small)
-                    .disabled(isTestingSelectedModel || storageManager.settings.selectedModel.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
-                    .help(isVi ? "Kiểm tra kết nối thực tế tới Model đang chọn bằng API Key hiện tại" : "Test connection to the selected Model using your active API Key")
-                }
             }
 
             if showCustomInput {
                 HStack(spacing: 8) {
-                    Text(isVi ? "Model ID:" : "Model ID:")
+                    Text("Model ID:")
                         .font(.system(size: 11))
                         .foregroundColor(.secondary)
                         .frame(width: 85, alignment: .leading)
                     TextField(loc.tr(.customModelPlaceholder), text: Binding(
                         get: { storageManager.settings.selectedModel },
                         set: { val in
-                            selectedModelTestStatus = nil
                             var s = storageManager.settings
                             s.selectedModel = val
                             storageManager.settings = s
@@ -1429,21 +1012,6 @@ public struct SettingsView: View {
                     ))
                     .textFieldStyle(.roundedBorder)
                     .font(.system(size: 11.5, design: .monospaced))
-
-                    if !storageManager.settings.selectedModel.isEmpty {
-                        Button(action: {
-                            selectedModelTestStatus = nil
-                            var s = storageManager.settings
-                            s.selectedModel = ""
-                            storageManager.settings = s
-                        }) {
-                            Image(systemName: "xmark.circle.fill")
-                                .font(.system(size: 11))
-                                .foregroundColor(.secondary)
-                        }
-                        .buttonStyle(.borderless)
-                        .help(isVi ? "Xoá Model ID" : "Clear Model ID")
-                    }
                 }
             }
         }
@@ -1502,34 +1070,6 @@ public struct SettingsView: View {
         }
     }
 
-    private func moveCustomPromptPreset(id: UUID, direction: Int) {
-        var s = storageManager.settings
-        guard let idx = s.customPromptPresets.firstIndex(where: { $0.id == id }) else { return }
-        let targetIdx = idx + direction
-        guard targetIdx >= 0 && targetIdx < s.customPromptPresets.count else { return }
-        s.customPromptPresets.swapAt(idx, targetIdx)
-        storageManager.settings = s
-    }
-
-    private func applyCustomPromptTemplate(id: UUID, template: String) {
-        var s = storageManager.settings
-        guard let idx = s.customPromptPresets.firstIndex(where: { $0.id == id }) else { return }
-        s.customPromptPresets[idx].prompt = template
-        if s.resolvedActivePromptId == id.uuidString {
-            s.customSystemPrompt = template
-        }
-        storageManager.settings = s
-    }
-
-    private func copyPromptToClipboard(_ text: String) {
-        NSPasteboard.general.clearContents()
-        NSPasteboard.general.setString(text, forType: .string)
-        didCopyPromptFeedback = true
-        DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) {
-            didCopyPromptFeedback = false
-        }
-    }
-
     private func toggleBuiltinPromptHidden(_ id: String) {
         var s = storageManager.settings
         let isCurrentlyHidden = s.isBuiltinPromptHidden(id)
@@ -1574,50 +1114,6 @@ public struct SettingsView: View {
         storageManager.settings = s
     }
 
-    private func importCustomPromptsFromFilePanel() {
-        NSApp.activate(ignoringOtherApps: true)
-        let panel = NSOpenPanel()
-        panel.allowedContentTypes = [.json, .plainText]
-        panel.allowsMultipleSelection = false
-        panel.canChooseDirectories = false
-        panel.canChooseFiles = true
-        guard panel.runModal() == .OK, let url = panel.url,
-              let data = try? Data(contentsOf: url) else { return }
-
-        if let importedPresets = try? JSONDecoder().decode([CustomPromptPreset].self, from: data), !importedPresets.isEmpty {
-            var s = storageManager.settings
-            var lastAddedId: String? = nil
-            for preset in importedPresets {
-                let fresh = CustomPromptPreset(name: preset.name, prompt: preset.prompt, isHidden: false)
-                s.customPromptPresets.append(fresh)
-                lastAddedId = fresh.id.uuidString
-            }
-            storageManager.settings = s
-            if let lastAddedId = lastAddedId {
-                selectedInspectorPromptId = lastAddedId
-            }
-        } else if let text = String(data: data, encoding: .utf8)?.trimmingCharacters(in: .whitespacesAndNewlines), !text.isEmpty {
-            let fileName = url.deletingPathExtension().lastPathComponent
-            createNewCustomPromptPreset(basePrompt: text, baseName: fileName)
-        }
-    }
-
-    private func exportCustomPromptsToFilePanel() {
-        let presets = storageManager.settings.customPromptPresets
-        guard !presets.isEmpty else { return }
-        NSApp.activate(ignoringOtherApps: true)
-        let panel = NSSavePanel()
-        panel.allowedContentTypes = [.json]
-        panel.nameFieldStringValue = "SuperTrans-CustomPrompts.json"
-        panel.canCreateDirectories = true
-        guard panel.runModal() == .OK, let url = panel.url else { return }
-        let enc = JSONEncoder()
-        enc.outputFormatting = [.prettyPrinted, .sortedKeys]
-        if let data = try? enc.encode(presets) {
-            try? data.write(to: url, options: .atomic)
-        }
-    }
-
     private var promptTabContent: some View {
         let settings = storageManager.settings
         let activeId = settings.resolvedActivePromptId
@@ -1649,24 +1145,6 @@ public struct SettingsView: View {
                     .buttonStyle(.bordered)
                     .controlSize(.small)
                 }
-
-                Menu {
-                    Button(isVi ? "Nhập Custom Prompt từ tệp (.json / .txt)..." : "Import Custom Prompts from File (.json / .txt)...") {
-                        importCustomPromptsFromFilePanel()
-                    }
-                    if !settings.customPromptPresets.isEmpty {
-                        Button(isVi ? "Xuất danh sách Custom Prompt ra tệp (.json)..." : "Export Custom Prompts to File (.json)...") {
-                            exportCustomPromptsToFilePanel()
-                        }
-                    }
-                } label: {
-                    Image(systemName: "square.and.arrow.up.on.square")
-                        .font(.system(size: 10.5))
-                }
-                .menuStyle(.borderedButton)
-                .controlSize(.small)
-                .fixedSize()
-                .help(isVi ? "Nhập hoặc xuất Custom Prompt bằng tệp (.json / .txt)" : "Import or export Custom Prompts (.json / .txt)")
 
                 Button(action: {
                     createNewCustomPromptPreset()
@@ -1754,13 +1232,6 @@ public struct SettingsView: View {
                                     storageManager.settings = s
                                     selectedInspectorPromptId = preset.id
                                 }
-                                Button(isVi ? "Tạo bản sao để sửa" : "Duplicate to Edit") {
-                                    let baseTitle = (isVi ? preset.shortTitleVi : preset.shortTitleEn) + (isVi ? " (Bản sao)" : " (Copy)")
-                                    createNewCustomPromptPreset(basePrompt: preset.prompt, baseName: baseTitle)
-                                }
-                                Button(isVi ? "Sao chép nội dung Prompt" : "Copy Prompt Text") {
-                                    copyPromptToClipboard(preset.prompt)
-                                }
                                 if isHidden || canHideMore {
                                     Divider()
                                     Button(isHidden ? (isVi ? "Hiển thị lại trên Popup" : "Show in Popup") : (isVi ? "Ẩn khỏi Popup" : "Hide from Popup")) {
@@ -1792,8 +1263,7 @@ public struct SettingsView: View {
                                 .padding(.horizontal, 6)
                                 .padding(.vertical, 6)
                         } else {
-                            let customCount = settings.customPromptPresets.count
-                            ForEach(Array(settings.customPromptPresets.enumerated()), id: \.element.id) { index, customPreset in
+                            ForEach(settings.customPromptPresets) { customPreset in
                                 let isHidden = customPreset.isHidden
                                 let isActive = (activeId == customPreset.id.uuidString)
                                 let isSelected = (inspectedId == customPreset.id.uuidString)
@@ -1826,34 +1296,6 @@ public struct SettingsView: View {
                                         .contentShape(Rectangle())
                                     }
                                     .buttonStyle(.plain)
-
-                                    if customCount > 1 {
-                                        VStack(spacing: 1) {
-                                            Button(action: {
-                                                moveCustomPromptPreset(id: customPreset.id, direction: -1)
-                                            }) {
-                                                Image(systemName: "chevron.up")
-                                                    .font(.system(size: 7.5, weight: .bold))
-                                                    .foregroundColor(index == 0 ? .secondary.opacity(0.3) : .secondary)
-                                                    .frame(width: 12, height: 9)
-                                            }
-                                            .buttonStyle(.borderless)
-                                            .disabled(index == 0)
-                                            .help(isVi ? "Đưa lên trên" : "Move up")
-
-                                            Button(action: {
-                                                moveCustomPromptPreset(id: customPreset.id, direction: 1)
-                                            }) {
-                                                Image(systemName: "chevron.down")
-                                                    .font(.system(size: 7.5, weight: .bold))
-                                                    .foregroundColor(index == customCount - 1 ? .secondary.opacity(0.3) : .secondary)
-                                                    .frame(width: 12, height: 9)
-                                            }
-                                            .buttonStyle(.borderless)
-                                            .disabled(index == customCount - 1)
-                                            .help(isVi ? "Đưa xuống dưới" : "Move down")
-                                        }
-                                    }
 
                                     Button(action: {
                                         toggleCustomPromptHidden(customPreset.id)
@@ -1912,13 +1354,6 @@ public struct SettingsView: View {
                                             storageManager.settings = s
                                             selectedInspectorPromptId = customPreset.id.uuidString
                                         }
-                                    }
-                                    Button(isVi ? "Nhân bản Custom Prompt" : "Duplicate Custom Prompt") {
-                                        let copyTitle = displayTitle + (isVi ? " (Bản sao)" : " (Copy)")
-                                        createNewCustomPromptPreset(basePrompt: customPreset.prompt, baseName: copyTitle)
-                                    }
-                                    Button(isVi ? "Sao chép nội dung Prompt" : "Copy Prompt Text") {
-                                        copyPromptToClipboard(customPreset.prompt)
                                     }
                                     if isHidden || canHideMore {
                                         Button(isHidden ? (isVi ? "Hiển thị lại trên Popup" : "Show in Popup") : (isVi ? "Ẩn khỏi Popup" : "Hide from Popup")) {
@@ -2032,166 +1467,32 @@ public struct SettingsView: View {
                                 .buttonStyle(.borderedProminent)
                                 .controlSize(.small)
                             }
-
-                            Button(action: {
-                                let currentText = storageManager.settings.customPromptPresets.first(where: { $0.id == customPreset.id })?.prompt ?? customPreset.prompt
-                                copyPromptToClipboard(currentText)
-                            }) {
-                                Image(systemName: didCopyPromptFeedback ? "checkmark" : "doc.on.doc")
-                                    .font(.system(size: 10))
-                                    .foregroundColor(didCopyPromptFeedback ? .green : .secondary)
-                            }
-                            .buttonStyle(.bordered)
-                            .controlSize(.small)
-                            .help(isVi ? "Sao chép nội dung Prompt" : "Copy Prompt text")
-
-                            Button(action: {
-                                let currentObj = storageManager.settings.customPromptPresets.first(where: { $0.id == customPreset.id }) ?? customPreset
-                                let copyTitle = currentObj.name + (isVi ? " (Bản sao)" : " (Copy)")
-                                createNewCustomPromptPreset(basePrompt: currentObj.prompt, baseName: copyTitle)
-                            }) {
-                                Image(systemName: "plus.square.on.square")
-                                    .font(.system(size: 10))
-                            }
-                            .buttonStyle(.bordered)
-                            .controlSize(.small)
-                            .help(isVi ? "Nhân bản Custom Prompt này" : "Duplicate this Custom Prompt")
-
-                            if customPreset.prompt != AppSettings.defaultSystemPrompt {
-                                Button(action: {
-                                    var s = storageManager.settings
-                                    if let idx = s.customPromptPresets.firstIndex(where: { $0.id == customPreset.id }) {
-                                        s.customPromptPresets[idx].prompt = AppSettings.defaultSystemPrompt
-                                        if s.resolvedActivePromptId == customPreset.id.uuidString {
-                                            s.customSystemPrompt = AppSettings.defaultSystemPrompt
-                                        }
-                                        storageManager.settings = s
-                                    }
-                                }) {
-                                    Image(systemName: "arrow.counterclockwise")
-                                        .font(.system(size: 10))
-                                }
-                                .buttonStyle(.bordered)
-                                .controlSize(.small)
-                                .help(isVi ? "Đặt lại nội dung về mẫu mặc định" : "Reset content to default template")
-                            }
                         }
 
-                        ZStack(alignment: .bottomTrailing) {
-                            TextEditor(text: Binding(
-                                get: {
-                                    storageManager.settings.customPromptPresets.first(where: { $0.id == customPreset.id })?.prompt ?? customPreset.prompt
-                                },
-                                set: { newPrompt in
-                                    var s = storageManager.settings
-                                    if let idx = s.customPromptPresets.firstIndex(where: { $0.id == customPreset.id }) {
-                                        s.customPromptPresets[idx].prompt = newPrompt
-                                        if s.resolvedActivePromptId == customPreset.id.uuidString {
-                                            s.customSystemPrompt = newPrompt
-                                        }
-                                        storageManager.settings = s
+                        TextEditor(text: Binding(
+                            get: {
+                                storageManager.settings.customPromptPresets.first(where: { $0.id == customPreset.id })?.prompt ?? customPreset.prompt
+                            },
+                            set: { newPrompt in
+                                var s = storageManager.settings
+                                if let idx = s.customPromptPresets.firstIndex(where: { $0.id == customPreset.id }) {
+                                    s.customPromptPresets[idx].prompt = newPrompt
+                                    if s.resolvedActivePromptId == customPreset.id.uuidString {
+                                        s.customSystemPrompt = newPrompt
                                     }
+                                    storageManager.settings = s
                                 }
-                            ))
-                            .font(.system(size: 11.5, design: .monospaced))
-                            .padding(6)
-                            .frame(maxWidth: .infinity, minHeight: 312, maxHeight: 312)
-                            .background(Color(nsColor: .textBackgroundColor))
-                            .cornerRadius(6)
-                            .overlay(
-                                RoundedRectangle(cornerRadius: 6, style: .continuous)
-                                    .stroke(Color(nsColor: .separatorColor), lineWidth: 0.8)
-                            )
-
-                            let charCount = (storageManager.settings.customPromptPresets.first(where: { $0.id == customPreset.id })?.prompt ?? customPreset.prompt).count
-                            HStack {
-                                Menu(isVi ? "Mẫu nhanh" : "Templates") {
-                                    Button(isVi ? "Dịch thuật chuẩn xác & Tự nhiên (Mặc định)" : "Accurate & Natural Translation (Default)") {
-                                        applyCustomPromptTemplate(id: customPreset.id, template: AppSettings.defaultSystemPrompt)
-                                    }
-                                    Button(isVi ? "Hiệu đính & Tự nhiên hoá câu văn" : "Proofread & Naturalize Tone") {
-                                        applyCustomPromptTemplate(
-                                            id: customPreset.id,
-                                            template: isVi
-                                                ? "Dịch văn bản sang {{TARGET_LANGUAGE}} với văn phong cực kỳ tự nhiên, mạch lạc, trau chuốt như người bản xứ. Chỉ trả về kết quả dịch cuối cùng, không giải thích."
-                                                : "Translate the text into {{TARGET_LANGUAGE}} with a natural, fluent, native-sounding tone. Return ONLY the final translated text without explanation."
-                                        )
-                                    }
-                                    Button(isVi ? "Tóm tắt ý chính (Bullet points)" : "Summarize Key Points (Bullets)") {
-                                        applyCustomPromptTemplate(
-                                            id: customPreset.id,
-                                            template: isVi
-                                                ? "Dịch và tóm tắt các ý chính của văn bản sang {{TARGET_LANGUAGE}} dưới dạng gạch đầu dòng ngắn gọn, súc tích. Chỉ trả về kết quả, không dẫn nhập."
-                                                : "Translate and summarize the key points of the text into {{TARGET_LANGUAGE}} as concise bullet points. Return ONLY the bullet points."
-                                        )
-                                    }
-                                    Button(isVi ? "Dịch kèm giải thích thuật ngữ quan trọng" : "Translate + Explain Key Terms") {
-                                        applyCustomPromptTemplate(
-                                            id: customPreset.id,
-                                            template: isVi
-                                                ? "Dịch văn bản sang {{TARGET_LANGUAGE}} chính xác. Sau bản dịch, liệt kê ngắn gọn tối đa 3 thuật ngữ/từ vựng quan trọng kèm giải nghĩa ngắn."
-                                                : "Translate the text accurately into {{TARGET_LANGUAGE}}. Below the translation, briefly list up to 3 key terms or vocabulary items with short explanations."
-                                        )
-                                    }
-                                }
-                                .menuStyle(.borderedButton)
-                                .controlSize(.mini)
-                                .fixedSize()
-
-                                Button(action: {
-                                    if let pasted = NSPasteboard.general.string(forType: .string)?.trimmingCharacters(in: .whitespacesAndNewlines),
-                                       !pasted.isEmpty {
-                                        applyCustomPromptTemplate(id: customPreset.id, template: pasted)
-                                    }
-                                }) {
-                                    HStack(spacing: 3) {
-                                        Image(systemName: "doc.on.clipboard")
-                                            .font(.system(size: 9))
-                                        Text(isVi ? "Dán" : "Paste")
-                                            .font(.system(size: 9.5))
-                                    }
-                                }
-                                .buttonStyle(.bordered)
-                                .controlSize(.mini)
-                                .help(isVi ? "Dán nội dung Prompt từ Clipboard" : "Paste Prompt content from Clipboard")
-
-                                Button(action: {
-                                    let currentPrompt = storageManager.settings.customPromptPresets.first(where: { $0.id == customPreset.id })?.prompt ?? customPreset.prompt
-                                    let separator = (currentPrompt.isEmpty || currentPrompt.hasSuffix(" ") || currentPrompt.hasSuffix("\n")) ? "" : " "
-                                    applyCustomPromptTemplate(id: customPreset.id, template: currentPrompt + separator + "{{TARGET_LANGUAGE}}")
-                                }) {
-                                    Text("+ {{TARGET_LANGUAGE}}")
-                                        .font(.system(size: 9, weight: .medium, design: .monospaced))
-                                }
-                                .buttonStyle(.bordered)
-                                .controlSize(.mini)
-                                .help(isVi ? "Chèn biến ngôn ngữ đích (SuperTrans sẽ tự thay bằng ngôn ngữ đích đang chọn)" : "Insert target language placeholder (automatically replaced with the active target language)")
-
-                                if charCount > 0 {
-                                    Button(action: {
-                                        applyCustomPromptTemplate(id: customPreset.id, template: "")
-                                    }) {
-                                        Image(systemName: "xmark.circle")
-                                            .font(.system(size: 9.5))
-                                    }
-                                    .buttonStyle(.bordered)
-                                    .controlSize(.mini)
-                                    .help(isVi ? "Xoá trắng nội dung Custom Prompt" : "Clear Custom Prompt text")
-                                }
-
-                                Spacer()
-
-                                Text(isVi ? "\(charCount) ký tự" : "\(charCount) chars")
-                                    .font(.system(size: 9.5, design: .monospaced))
-                                    .foregroundColor(.secondary.opacity(0.8))
-                                    .padding(.horizontal, 6)
-                                    .padding(.vertical, 2)
-                                    .background(Color(nsColor: .windowBackgroundColor).opacity(0.85))
-                                    .cornerRadius(4)
-                                    .allowsHitTesting(false)
                             }
-                            .padding(6)
-                        }
+                        ))
+                        .font(.system(size: 11.5, design: .monospaced))
+                        .padding(6)
+                        .frame(maxWidth: .infinity, minHeight: 312, maxHeight: 312)
+                        .background(Color(nsColor: .textBackgroundColor))
+                        .cornerRadius(6)
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 6, style: .continuous)
+                                .stroke(Color(nsColor: .separatorColor), lineWidth: 0.8)
+                        )
                     } else if let builtinPreset = AppSettings.promptPresets.first(where: { $0.id == inspectedId }) ?? AppSettings.promptPresets.first {
                         let isHidden = settings.isBuiltinPromptHidden(builtinPreset.id)
                         let isBuiltinActive = (activeId == builtinPreset.id)
@@ -2242,60 +1543,23 @@ public struct SettingsView: View {
                                 .buttonStyle(.borderedProminent)
                                 .controlSize(.small)
                             }
-
-                            Button(action: {
-                                copyPromptToClipboard(builtinPreset.prompt)
-                            }) {
-                                Image(systemName: didCopyPromptFeedback ? "checkmark" : "doc.on.doc")
-                                    .font(.system(size: 10))
-                                    .foregroundColor(didCopyPromptFeedback ? .green : .secondary)
-                            }
-                            .buttonStyle(.bordered)
-                            .controlSize(.small)
-                            .help(isVi ? "Sao chép nội dung Prompt" : "Copy Prompt text")
-
-                            Button(action: {
-                                let baseTitle = (isVi ? builtinPreset.shortTitleVi : builtinPreset.shortTitleEn) + (isVi ? " (Bản sao)" : " (Copy)")
-                                createNewCustomPromptPreset(basePrompt: builtinPreset.prompt, baseName: baseTitle)
-                            }) {
-                                HStack(spacing: 3) {
-                                    Image(systemName: "plus.square.on.square")
-                                        .font(.system(size: 9.5))
-                                    Text(isVi ? "Tạo bản sao để sửa" : "Duplicate to Edit")
-                                        .font(.system(size: 10.5))
-                                }
-                            }
-                            .buttonStyle(.bordered)
-                            .controlSize(.small)
                         }
 
-                        ZStack(alignment: .bottomTrailing) {
-                            ScrollView {
-                                Text(builtinPreset.prompt)
-                                    .font(.system(size: 11.5, design: .monospaced))
-                                    .foregroundColor(.secondary)
-                                    .textSelection(.enabled)
-                                    .frame(maxWidth: .infinity, alignment: .leading)
-                                    .padding(8)
-                            }
-                            .frame(maxWidth: .infinity, minHeight: 312, maxHeight: 312)
-                            .background(Color(nsColor: .textBackgroundColor).opacity(0.6))
-                            .cornerRadius(6)
-                            .overlay(
-                                RoundedRectangle(cornerRadius: 6, style: .continuous)
-                                    .stroke(Color(nsColor: .separatorColor), lineWidth: 0.8)
-                            )
-
-                            Text(isVi ? "\(builtinPreset.prompt.count) ký tự" : "\(builtinPreset.prompt.count) chars")
-                                .font(.system(size: 9.5, design: .monospaced))
-                                .foregroundColor(.secondary.opacity(0.8))
-                                .padding(.horizontal, 6)
-                                .padding(.vertical, 2)
-                                .background(Color(nsColor: .windowBackgroundColor).opacity(0.85))
-                                .cornerRadius(4)
-                                .padding(6)
-                                .allowsHitTesting(false)
+                        ScrollView {
+                            Text(builtinPreset.prompt)
+                                .font(.system(size: 11.5, design: .monospaced))
+                                .foregroundColor(.secondary)
+                                .textSelection(.enabled)
+                                .frame(maxWidth: .infinity, alignment: .leading)
+                                .padding(8)
                         }
+                        .frame(maxWidth: .infinity, minHeight: 312, maxHeight: 312)
+                        .background(Color(nsColor: .textBackgroundColor).opacity(0.6))
+                        .cornerRadius(6)
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 6, style: .continuous)
+                                .stroke(Color(nsColor: .separatorColor), lineWidth: 0.8)
+                        )
                     }
                 }
                 .frame(maxWidth: .infinity)
@@ -2312,7 +1576,6 @@ public struct SettingsView: View {
         let activeProj = storageManager.activeProject
         let projectItems = storageManager.items.filter { $0.projectId == activeProj.id }
         let verifiedCount = projectItems.filter { $0.isVerified }.count
-        let pinnedCount = projectItems.filter { $0.isPinned }.count
 
         return VStack(spacing: 8) {
             // Card 1: Adaptive Learning Toggle & Project Selector / Creator
@@ -2405,16 +1668,6 @@ public struct SettingsView: View {
                         .padding(10)
                     }
 
-                    Button(action: {
-                        duplicateActiveProject()
-                    }) {
-                        Image(systemName: "plus.square.on.square")
-                            .font(.system(size: 11))
-                    }
-                    .buttonStyle(.bordered)
-                    .controlSize(.small)
-                    .help(isVi ? "Nhân bản dự án này (sao chép Ghi chú chuyên ngành & Từ điển thuật ngữ)" : "Duplicate this project (copies domain note & glossary)")
-
                     if activeProj.id != TranslationProject.defaultProjectId {
                         Button(role: .destructive) {
                             showingDeleteProjectConfirmation = true
@@ -2478,104 +1731,53 @@ public struct SettingsView: View {
                     Text(isVi ? "Ngữ cảnh riêng của Dự án \"\(activeProj.name)\"" : "Context for Project \"\(activeProj.name)\"")
                         .font(.system(size: 12, weight: .semibold))
                     Spacer()
-                    HStack(spacing: 8) {
-                        Label("\(activeProj.glossary.count) \(isVi ? "thuật ngữ" : "terms")", systemImage: "book.closed")
-
-                        Button(action: {
-                            showingVerifiedExamplesPopover.toggle()
-                        }) {
-                            HStack(spacing: 3) {
-                                Image(systemName: "checkmark.seal.fill")
-                                Text("\(verifiedCount) \(isVi ? "câu đã dạy" : "taught")")
-                                    .underline()
-                            }
-                        }
-                        .buttonStyle(.plain)
-                        .help(isVi ? "Bấm để xem hoặc xoá các câu mẫu chuẩn đã dạy AI trong dự án này" : "Click to inspect or remove verified examples for this project")
-                        .popover(isPresented: $showingVerifiedExamplesPopover, arrowEdge: .bottom) {
-                            verifiedExamplesPopoverContent(for: activeProj)
-                        }
-
-                        Button(action: {
-                            showingPinnedItemsPopover.toggle()
-                        }) {
-                            HStack(spacing: 3) {
-                                Image(systemName: "pin.fill")
-                                Text("\(pinnedCount) \(isVi ? "câu ghim" : "pinned")")
-                                    .underline()
-                            }
-                        }
-                        .buttonStyle(.plain)
-                        .help(isVi ? "Bấm để xem, sao chép hoặc bỏ ghim các câu dịch đã ghim trong dự án này" : "Click to inspect, copy, or unpin pinned translations in this project")
-                        .popover(isPresented: $showingPinnedItemsPopover, arrowEdge: .bottom) {
-                            pinnedItemsPopoverContent(for: activeProj)
+                    Button(action: {
+                        showingVerifiedExamplesPopover.toggle()
+                    }) {
+                        HStack(spacing: 3) {
+                            Image(systemName: "checkmark.seal.fill")
+                            Text("\(verifiedCount) \(isVi ? "câu đã dạy" : "taught")")
+                                .underline()
                         }
                     }
+                    .buttonStyle(.plain)
                     .font(.system(size: 10, weight: .medium))
                     .foregroundColor(.accentColor)
+                    .help(isVi ? "Bấm để xem hoặc xoá các câu mẫu chuẩn đã dạy AI trong dự án này" : "Click to inspect or remove verified examples for this project")
+                    .popover(isPresented: $showingVerifiedExamplesPopover, arrowEdge: .bottom) {
+                        verifiedExamplesPopoverContent(for: activeProj)
+                    }
                 }
 
-                HStack(spacing: 6) {
-                    ZStack(alignment: .trailing) {
-                        TextField(
-                            isVi ? "Ghi chú chuyên ngành / văn phong cho dự án này (VD: Tài liệu y khoa, giữ nguyên tên thuốc)..." : "Domain / style guidelines for this project...",
-                            text: Binding<String>(
-                                get: { activeProj.domainNote },
-                                set: { newNote in
-                                    var updated = activeProj
-                                    updated.domainNote = newNote
-                                    storageManager.updateProject(updated)
-                                }
-                            )
+                ZStack(alignment: .trailing) {
+                    TextField(
+                        isVi ? "Ghi chú chuyên ngành / văn phong cho dự án này (VD: Tài liệu y khoa, giữ nguyên tên thuốc)..." : "Domain / style guidelines for this project...",
+                        text: Binding<String>(
+                            get: { activeProj.domainNote },
+                            set: { newNote in
+                                var updated = activeProj
+                                updated.domainNote = newNote
+                                storageManager.updateProject(updated)
+                            }
                         )
-                        .textFieldStyle(.roundedBorder)
-                        .font(.system(size: 11))
+                    )
+                    .textFieldStyle(.roundedBorder)
+                    .font(.system(size: 11))
 
-                        if !activeProj.domainNote.isEmpty {
-                            Button(action: {
-                                applyDomainNoteTemplate("")
-                            }) {
-                                Image(systemName: "xmark.circle.fill")
-                                    .font(.system(size: 10.5))
-                                    .foregroundColor(.secondary)
-                            }
-                            .buttonStyle(.plain)
-                            .padding(.trailing, 6)
-                            .help(isVi ? "Xoá ghi chú ngữ cảnh" : "Clear domain note")
+                    if !activeProj.domainNote.isEmpty {
+                        Button(action: {
+                            var updated = activeProj
+                            updated.domainNote = ""
+                            storageManager.updateProject(updated)
+                        }) {
+                            Image(systemName: "xmark.circle.fill")
+                                .font(.system(size: 10.5))
+                                .foregroundColor(.secondary)
                         }
+                        .buttonStyle(.plain)
+                        .padding(.trailing, 6)
+                        .help(isVi ? "Xoá ghi chú ngữ cảnh" : "Clear domain note")
                     }
-
-                    Menu(isVi ? "Mẫu gợi ý" : "Templates") {
-                        Button(isVi ? "IT / Phần mềm (Giữ nguyên tên biến, API, thuật ngữ kỹ thuật)" : "IT / Software (Keep code, APIs, technical terms)") {
-                            applyDomainNoteTemplate(isVi
-                                ? "Tài liệu kỹ thuật phần mềm & IT. Giữ nguyên tên biến, hàm, API, câu lệnh CLI và thuật ngữ chuyên ngành phổ biến."
-                                : "Software engineering & IT documentation. Preserve variable names, APIs, CLI commands, and standard technical terms.")
-                        }
-                        Button(isVi ? "Doanh nghiệp / BPO Nhật - Việt (Văn phong lịch sự, trang trọng)" : "Business / BPO (Polite, formal corporate tone)") {
-                            applyDomainNoteTemplate(isVi
-                                ? "Giao tiếp doanh nghiệp & BPO. Dịch lịch sự, rõ ràng, trang trọng, truyền tải chính xác kính ngữ và hạng mục công việc."
-                                : "Corporate & BPO communication. Use a polite, formal, and clear tone, accurately conveying honorifics and action items.")
-                        }
-                        Button(isVi ? "Tài chính / Ngân hàng (Chuẩn thuật ngữ kế toán, ngân hàng)" : "Finance / Banking (Accurate financial & accounting terms)") {
-                            applyDomainNoteTemplate(isVi
-                                ? "Tài liệu tài chính, ngân hàng & kế toán. Sử dụng thuật ngữ tài chính chuẩn xác, nhất quán số liệu và đơn vị tiền tệ."
-                                : "Financial, banking & accounting documents. Use precise financial terminology and keep figures/currencies consistent.")
-                        }
-                        Button(isVi ? "Y khoa / Dược phẩm (Giữ nguyên tên hoạt chất, thuật ngữ y học)" : "Medical / Pharma (Keep active ingredients & clinical terms)") {
-                            applyDomainNoteTemplate(isVi
-                                ? "Tài liệu y khoa & dược phẩm. Dịch chuẩn xác thuật ngữ lâm sàng, giữ nguyên tên quốc tế của thuốc và hoạt chất."
-                                : "Medical & pharmaceutical documents. Translate clinical terms accurately and preserve international drug/ingredient names.")
-                        }
-                        if !activeProj.domainNote.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-                            Divider()
-                            Button(isVi ? "Xoá ghi chú ngữ cảnh" : "Clear Domain Note", role: .destructive) {
-                                applyDomainNoteTemplate("")
-                            }
-                        }
-                    }
-                    .menuStyle(.borderedButton)
-                    .controlSize(.small)
-                    .fixedSize()
                 }
             }
             .padding(10)
@@ -2629,20 +1831,6 @@ public struct SettingsView: View {
                           : (isVi ? "Xuất toàn bộ \(activeProj.glossary.count) thuật ngữ của dự án ra tệp CSV (kèm dòng tiêu đề)" : "Export all \(activeProj.glossary.count) glossary terms to CSV (including header)"))
 
                     if activeProj.glossary.count > 1 {
-                        Button(action: {
-                            var updated = activeProj
-                            updated.glossary.sort {
-                                $0.sourceTerm.localizedCaseInsensitiveCompare($1.sourceTerm) == .orderedAscending
-                            }
-                            storageManager.updateProject(updated)
-                        }) {
-                            Image(systemName: "arrow.up.arrow.down")
-                                .font(.system(size: 9.5))
-                        }
-                        .buttonStyle(.bordered)
-                        .controlSize(.mini)
-                        .help(isVi ? "Sắp xếp từ điển thuật ngữ theo thứ tự A–Z" : "Sort glossary terms alphabetically (A–Z)")
-
                         Button(action: { showingClearGlossaryConfirmation = true }) {
                             Image(systemName: "trash")
                                 .font(.system(size: 9.5))
@@ -2671,18 +1859,6 @@ public struct SettingsView: View {
                     TextField(isVi ? "Từ / Cụm từ gốc (VD: 代表)" : "Source term", text: $newGlossarySourceInput)
                         .textFieldStyle(.roundedBorder)
                         .font(.system(size: 11))
-
-                    Button(action: {
-                        let tmp = newGlossarySourceInput
-                        newGlossarySourceInput = newGlossaryTargetInput
-                        newGlossaryTargetInput = tmp
-                    }) {
-                        Image(systemName: "arrow.left.arrow.right")
-                            .font(.system(size: 9.5, weight: .bold))
-                            .foregroundColor(.secondary)
-                    }
-                    .buttonStyle(.borderless)
-                    .help(isVi ? "Đảo chiều từ gốc và nghĩa chuẩn" : "Swap source and target terms")
 
                     TextField(isVi ? "Nghĩa chuẩn (VD: tổng đài)" : "Target term", text: $newGlossaryTargetInput)
                         .textFieldStyle(.roundedBorder)
@@ -2795,24 +1971,6 @@ public struct SettingsView: View {
                                     Spacer()
 
                                     Button(action: {
-                                        let pairText = "\(entry.sourceTerm)\t\(entry.targetTerm)"
-                                        NSPasteboard.general.clearContents()
-                                        NSPasteboard.general.setString(pairText, forType: .string)
-                                        copiedGlossaryEntryId = entry.id
-                                        DispatchQueue.main.asyncAfter(deadline: .now() + 1.2) {
-                                            if copiedGlossaryEntryId == entry.id {
-                                                copiedGlossaryEntryId = nil
-                                            }
-                                        }
-                                    }) {
-                                        Image(systemName: copiedGlossaryEntryId == entry.id ? "checkmark" : "doc.on.doc")
-                                            .font(.system(size: 9.5))
-                                            .foregroundColor(copiedGlossaryEntryId == entry.id ? .green : .secondary)
-                                    }
-                                    .buttonStyle(.plain)
-                                    .help(isVi ? "Sao chép cặp thuật ngữ này" : "Copy this glossary pair")
-
-                                    Button(action: {
                                         newGlossarySourceInput = entry.sourceTerm
                                         newGlossaryTargetInput = entry.targetTerm
                                     }) {
@@ -2840,29 +1998,6 @@ public struct SettingsView: View {
                                     Button(isVi ? "Sửa thuật ngữ này" : "Edit Term") {
                                         newGlossarySourceInput = entry.sourceTerm
                                         newGlossaryTargetInput = entry.targetTerm
-                                    }
-                                    Button(isVi ? "Đảo chiều từ gốc & nghĩa chuẩn" : "Swap Source & Target") {
-                                        var updated = activeProj
-                                        if let idx = updated.glossary.firstIndex(where: { $0.id == entry.id }) {
-                                            updated.glossary[idx] = GlossaryEntry(
-                                                id: entry.id,
-                                                sourceTerm: entry.targetTerm,
-                                                targetTerm: entry.sourceTerm,
-                                                createdAt: entry.createdAt
-                                            )
-                                            storageManager.updateProject(updated)
-                                        }
-                                    }
-                                    Button(isVi ? "Sao chép cặp thuật ngữ" : "Copy Term Pair") {
-                                        let pairText = "\(entry.sourceTerm)\t\(entry.targetTerm)"
-                                        NSPasteboard.general.clearContents()
-                                        NSPasteboard.general.setString(pairText, forType: .string)
-                                        copiedGlossaryEntryId = entry.id
-                                        DispatchQueue.main.asyncAfter(deadline: .now() + 1.2) {
-                                            if copiedGlossaryEntryId == entry.id {
-                                                copiedGlossaryEntryId = nil
-                                            }
-                                        }
                                     }
                                     Divider()
                                     Button(isVi ? "Xoá thuật ngữ" : "Delete Term", role: .destructive) {
@@ -2893,23 +2028,6 @@ public struct SettingsView: View {
         guard !name.isEmpty else { return }
         _ = storageManager.createProject(name: name)
         newProjectNameInput = ""
-    }
-
-    private func applyDomainNoteTemplate(_ note: String) {
-        var updated = storageManager.activeProject
-        updated.domainNote = note
-        storageManager.updateProject(updated)
-    }
-
-    private func duplicateActiveProject() {
-        let source = storageManager.activeProject
-        let copySuffix = isVi ? " (Bản sao)" : " (Copy)"
-        var created = storageManager.createProject(name: source.name + copySuffix, domainNote: source.domainNote)
-        created.glossary = source.glossary.map { entry in
-            GlossaryEntry(sourceTerm: entry.sourceTerm, targetTerm: entry.targetTerm)
-        }
-        storageManager.updateProject(created)
-        storageManager.selectActiveProject(id: created.id)
     }
 
     private func addGlossaryEntryFromInput() {
@@ -2978,18 +2096,6 @@ public struct SettingsView: View {
         }
     }
 
-    private func moveAPIKey(at index: Int, offset: Int) {
-        var keys = storageManager.settings.validAPIKeys
-        let newIndex = index + offset
-        guard index >= 0, index < keys.count, newIndex >= 0, newIndex < keys.count else { return }
-        let item = keys.remove(at: index)
-        keys.insert(item, at: newIndex)
-        var s = storageManager.settings
-        s.apiKeys = keys
-        storageManager.settings = s
-        keyRefreshTrigger = UUID()
-    }
-
     private func verifiedExamplesPopoverContent(for project: TranslationProject) -> some View {
         let verifiedItems = storageManager.items.filter { $0.projectId == project.id && $0.isVerified }
         let filteredVerified: [TranslationItem] = {
@@ -3012,46 +2118,6 @@ public struct SettingsView: View {
                 Text("(\(verifiedItems.count))")
                     .font(.system(size: 11, design: .monospaced))
                     .foregroundColor(.secondary)
-
-                if !verifiedItems.isEmpty {
-                    Button(action: {
-                        let exported = verifiedItems.map { item in
-                            if let src = item.sourceText, !src.isEmpty {
-                                return "\(src)\t\(item.translatedText)"
-                            }
-                            return item.translatedText
-                        }.joined(separator: "\n")
-                        NSPasteboard.general.clearContents()
-                        NSPasteboard.general.setString(exported, forType: .string)
-                        didCopyAllPopoverItemsFeedback = true
-                        DispatchQueue.main.asyncAfter(deadline: .now() + 1.4) {
-                            didCopyAllPopoverItemsFeedback = false
-                        }
-                    }) {
-                        HStack(spacing: 3) {
-                            Image(systemName: didCopyAllPopoverItemsFeedback ? "checkmark" : "doc.on.doc")
-                                .font(.system(size: 9))
-                            Text(didCopyAllPopoverItemsFeedback ? (isVi ? "Đã chép" : "Copied") : (isVi ? "Chép tất cả" : "Copy All"))
-                                .font(.system(size: 10))
-                        }
-                    }
-                    .buttonStyle(.bordered)
-                    .controlSize(.mini)
-                    .help(isVi ? "Sao chép toàn bộ câu mẫu chuẩn của dự án vào Clipboard" : "Copy all verified examples in this project to Clipboard")
-
-                    Button(action: {
-                        exportItemsToTSVPanel(
-                            items: verifiedItems,
-                            fileName: "SuperTrans-Verified-\(project.name).tsv"
-                        )
-                    }) {
-                        Image(systemName: "square.and.arrow.up")
-                            .font(.system(size: 9))
-                    }
-                    .buttonStyle(.bordered)
-                    .controlSize(.mini)
-                    .help(isVi ? "Xuất danh sách câu mẫu chuẩn ra tệp (.tsv)" : "Export verified examples to file (.tsv)")
-                }
 
                 if verifiedItems.count > 1 {
                     Button(action: {
@@ -3124,24 +2190,6 @@ public struct SettingsView: View {
                                 .frame(maxWidth: .infinity, alignment: .leading)
 
                                 Button(action: {
-                                    NSPasteboard.general.clearContents()
-                                    NSPasteboard.general.setString(item.translatedText, forType: .string)
-                                    copiedPopoverItemId = item.id
-                                    DispatchQueue.main.asyncAfter(deadline: .now() + 1.2) {
-                                        if copiedPopoverItemId == item.id {
-                                            copiedPopoverItemId = nil
-                                        }
-                                    }
-                                }) {
-                                    Image(systemName: copiedPopoverItemId == item.id ? "checkmark" : "doc.on.doc")
-                                        .font(.system(size: 10.5))
-                                        .foregroundColor(copiedPopoverItemId == item.id ? .green : .secondary)
-                                        .frame(width: 20, height: 20)
-                                }
-                                .buttonStyle(.borderless)
-                                .help(isVi ? "Sao chép bản dịch chuẩn" : "Copy verified translation")
-
-                                Button(action: {
                                     storageManager.setTranslationVerified(id: item.id, isVerified: false)
                                 }) {
                                     Image(systemName: "trash")
@@ -3154,36 +2202,6 @@ public struct SettingsView: View {
                             }
                             .padding(8)
                             .background(RoundedRectangle(cornerRadius: 6).fill(Color.secondary.opacity(0.08)))
-                            .contextMenu {
-                                Button(isVi ? "Sao chép bản dịch" : "Copy Translation") {
-                                    NSPasteboard.general.clearContents()
-                                    NSPasteboard.general.setString(item.translatedText, forType: .string)
-                                }
-                                if let src = item.sourceText, !src.isEmpty {
-                                    Button(isVi ? "Sao chép văn bản gốc" : "Copy Source Text") {
-                                        NSPasteboard.general.clearContents()
-                                    NSPasteboard.general.setString(src, forType: .string)
-                                    }
-                                    Button(isVi ? "Sao chép cặp Gốc & Dịch" : "Copy Source & Translation Pair") {
-                                        NSPasteboard.general.clearContents()
-                                        NSPasteboard.general.setString("\(src)\t\(item.translatedText)", forType: .string)
-                                    }
-                                    if src.count <= 120 {
-                                        Divider()
-                                        Button(isVi ? "Đưa vào Từ điển thuật ngữ của dự án" : "Add to Project Glossary") {
-                                            storageManager.addOrUpdateGlossaryEntry(
-                                                projectId: project.id,
-                                                sourceTerm: src,
-                                                targetTerm: item.translatedText
-                                            )
-                                        }
-                                    }
-                                }
-                                Divider()
-                                Button(isVi ? "Gỡ khỏi câu mẫu chuẩn" : "Remove Verified Example", role: .destructive) {
-                                    storageManager.setTranslationVerified(id: item.id, isVerified: false)
-                                }
-                            }
                         }
                     }
                 }
@@ -3192,274 +2210,6 @@ public struct SettingsView: View {
         }
         .padding(12)
         .frame(width: 370)
-    }
-
-    private func pinnedItemsPopoverContent(for project: TranslationProject) -> some View {
-        let pinnedItems = storageManager.items.filter { $0.projectId == project.id && $0.isPinned }
-        let filteredPinned: [TranslationItem] = {
-            let q = popoverItemsSearchQuery.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
-            guard !q.isEmpty else { return pinnedItems }
-            return pinnedItems.filter {
-                ($0.sourceText?.lowercased().contains(q) ?? false) || $0.translatedText.lowercased().contains(q)
-            }
-        }()
-        return VStack(alignment: .leading, spacing: 8) {
-            HStack {
-                Image(systemName: "pin.fill")
-                    .foregroundColor(.accentColor)
-                    .font(.system(size: 12))
-                Text(isVi
-                     ? "Bản dịch đã ghim — Dự án \"\(project.name)\""
-                     : "Pinned Translations — Project \"\(project.name)\"")
-                    .font(.system(size: 12, weight: .semibold))
-                Spacer()
-                Text("(\(pinnedItems.count))")
-                    .font(.system(size: 11, design: .monospaced))
-                    .foregroundColor(.secondary)
-
-                if !pinnedItems.isEmpty {
-                    Button(action: {
-                        let exported = pinnedItems.map { item in
-                            if let src = item.sourceText, !src.isEmpty {
-                                return "\(src)\t\(item.translatedText)"
-                            }
-                            return item.translatedText
-                        }.joined(separator: "\n")
-                        NSPasteboard.general.clearContents()
-                        NSPasteboard.general.setString(exported, forType: .string)
-                        didCopyAllPopoverItemsFeedback = true
-                        DispatchQueue.main.asyncAfter(deadline: .now() + 1.4) {
-                            didCopyAllPopoverItemsFeedback = false
-                        }
-                    }) {
-                        HStack(spacing: 3) {
-                            Image(systemName: didCopyAllPopoverItemsFeedback ? "checkmark" : "doc.on.doc")
-                                .font(.system(size: 9))
-                            Text(didCopyAllPopoverItemsFeedback ? (isVi ? "Đã chép" : "Copied") : (isVi ? "Chép tất cả" : "Copy All"))
-                                .font(.system(size: 10))
-                        }
-                    }
-                    .buttonStyle(.bordered)
-                    .controlSize(.mini)
-                    .help(isVi ? "Sao chép toàn bộ bản dịch đã ghim của dự án vào Clipboard" : "Copy all pinned translations in this project to Clipboard")
-
-                    Button(action: {
-                        exportItemsToTSVPanel(
-                            items: pinnedItems,
-                            fileName: "SuperTrans-Pinned-\(project.name).tsv"
-                        )
-                    }) {
-                        Image(systemName: "square.and.arrow.up")
-                            .font(.system(size: 9))
-                    }
-                    .buttonStyle(.bordered)
-                    .controlSize(.mini)
-                    .help(isVi ? "Xuất danh sách bản dịch đã ghim ra tệp (.tsv)" : "Export pinned translations to file (.tsv)")
-                }
-
-                if pinnedItems.count > 1 {
-                    Button(action: {
-                        for item in pinnedItems where item.isPinned {
-                            storageManager.togglePin(id: item.id)
-                        }
-                    }) {
-                        Text(isVi ? "Bỏ ghim tất cả" : "Unpin All")
-                            .font(.system(size: 10))
-                    }
-                    .buttonStyle(.bordered)
-                    .controlSize(.mini)
-                    .help(isVi ? "Bỏ ghim toàn bộ các câu dịch trong dự án này" : "Unpin all translations in this project")
-                }
-            }
-
-            if pinnedItems.count >= 3 {
-                HStack(spacing: 4) {
-                    Image(systemName: "magnifyingglass")
-                        .font(.system(size: 10))
-                        .foregroundColor(.secondary)
-                    TextField(isVi ? "Lọc câu ghim..." : "Filter pinned items...", text: $popoverItemsSearchQuery)
-                        .textFieldStyle(.plain)
-                        .font(.system(size: 11))
-                    if !popoverItemsSearchQuery.isEmpty {
-                        Button(action: { popoverItemsSearchQuery = "" }) {
-                            Image(systemName: "xmark.circle.fill")
-                                .font(.system(size: 10))
-                                .foregroundColor(.secondary)
-                        }
-                        .buttonStyle(.plain)
-                    }
-                }
-                .padding(.horizontal, 7)
-                .padding(.vertical, 4)
-                .background(RoundedRectangle(cornerRadius: 5).fill(Color(nsColor: .textBackgroundColor)))
-                .overlay(RoundedRectangle(cornerRadius: 5).stroke(Color(nsColor: .separatorColor), lineWidth: 0.7))
-            }
-
-            if pinnedItems.isEmpty {
-                Text(isVi
-                     ? "Chưa có bản dịch nào được ghim trong dự án này. Bấm biểu tượng ghim trên Popup hoặc trong Lịch sử để lưu các câu dịch quan trọng."
-                     : "No pinned translations in this project yet. Click the pin icon on the popup or in History to keep important translations.")
-                    .font(.system(size: 11))
-                    .foregroundColor(.secondary)
-                    .fixedSize(horizontal: false, vertical: true)
-                    .padding(.vertical, 12)
-            } else if filteredPinned.isEmpty {
-                Text(isVi ? "Không tìm thấy câu ghim phù hợp." : "No matching pinned translations.")
-                    .font(.system(size: 11))
-                    .foregroundColor(.secondary)
-                    .padding(.vertical, 12)
-            } else {
-                ScrollView {
-                    LazyVStack(alignment: .leading, spacing: 6) {
-                        ForEach(filteredPinned) { item in
-                            HStack(alignment: .top, spacing: 8) {
-                                VStack(alignment: .leading, spacing: 3) {
-                                    if let src = item.sourceText, !src.isEmpty {
-                                        Text(src)
-                                            .font(.system(size: 10.5))
-                                            .foregroundColor(.secondary)
-                                            .lineLimit(2)
-                                    }
-                                    Text(item.translatedText)
-                                        .font(.system(size: 11, weight: .medium))
-                                        .foregroundColor(.primary)
-                                        .lineLimit(3)
-                                }
-                                .frame(maxWidth: .infinity, alignment: .leading)
-
-                                Button(action: {
-                                    NSPasteboard.general.clearContents()
-                                    NSPasteboard.general.setString(item.translatedText, forType: .string)
-                                    copiedPopoverItemId = item.id
-                                    DispatchQueue.main.asyncAfter(deadline: .now() + 1.2) {
-                                        if copiedPopoverItemId == item.id {
-                                            copiedPopoverItemId = nil
-                                        }
-                                    }
-                                }) {
-                                    Image(systemName: copiedPopoverItemId == item.id ? "checkmark" : "doc.on.doc")
-                                        .font(.system(size: 10.5))
-                                        .foregroundColor(copiedPopoverItemId == item.id ? .green : .secondary)
-                                        .frame(width: 20, height: 20)
-                                }
-                                .buttonStyle(.borderless)
-                                .help(isVi ? "Sao chép bản dịch" : "Copy translation")
-
-                                Button(action: {
-                                    storageManager.togglePin(id: item.id)
-                                }) {
-                                    Image(systemName: "pin.slash")
-                                        .font(.system(size: 10.5))
-                                        .foregroundColor(.orange)
-                                        .frame(width: 20, height: 20)
-                                }
-                                .buttonStyle(.borderless)
-                                .help(isVi ? "Bỏ ghim bản dịch này" : "Unpin this translation")
-                            }
-                            .padding(8)
-                            .background(RoundedRectangle(cornerRadius: 6).fill(Color.secondary.opacity(0.08)))
-                            .contextMenu {
-                                Button(isVi ? "Sao chép bản dịch" : "Copy Translation") {
-                                    NSPasteboard.general.clearContents()
-                                    NSPasteboard.general.setString(item.translatedText, forType: .string)
-                                }
-                                if let src = item.sourceText, !src.isEmpty {
-                                    Button(isVi ? "Sao chép văn bản gốc" : "Copy Source Text") {
-                                        NSPasteboard.general.clearContents()
-                                        NSPasteboard.general.setString(src, forType: .string)
-                                    }
-                                    Button(isVi ? "Sao chép cặp Gốc & Dịch" : "Copy Source & Translation Pair") {
-                                        NSPasteboard.general.clearContents()
-                                        NSPasteboard.general.setString("\(src)\t\(item.translatedText)", forType: .string)
-                                    }
-                                    if src.count <= 120 {
-                                        Divider()
-                                        Button(isVi ? "Đưa vào Từ điển thuật ngữ của dự án" : "Add to Project Glossary") {
-                                            storageManager.addOrUpdateGlossaryEntry(
-                                                projectId: project.id,
-                                                sourceTerm: src,
-                                                targetTerm: item.translatedText
-                                            )
-                                        }
-                                    }
-                                }
-                                Divider()
-                                Button(isVi ? "Bỏ ghim bản dịch này" : "Unpin Translation", role: .destructive) {
-                                    storageManager.togglePin(id: item.id)
-                                }
-                            }
-                        }
-                    }
-                }
-                .frame(maxHeight: 220)
-            }
-        }
-        .padding(12)
-        .frame(width: 370)
-    }
-
-    private func exportItemsToTSVPanel(items: [TranslationItem], fileName: String) {
-        guard !items.isEmpty else { return }
-        NSApp.activate(ignoringOtherApps: true)
-        let panel = NSSavePanel()
-        panel.allowedContentTypes = [.tabSeparatedText, .plainText]
-        panel.nameFieldStringValue = fileName
-        panel.canCreateDirectories = true
-        guard panel.runModal() == .OK, let url = panel.url else { return }
-        let formatted = items.map { item in
-            let cleanSrc = (item.sourceText ?? "").replacingOccurrences(of: "\t", with: " ").replacingOccurrences(of: "\n", with: " ")
-            let cleanDst = item.translatedText.replacingOccurrences(of: "\t", with: " ").replacingOccurrences(of: "\n", with: " ")
-            return cleanSrc.isEmpty ? cleanDst : "\(cleanSrc)\t\(cleanDst)"
-        }.joined(separator: "\n")
-        try? formatted.write(to: url, atomically: true, encoding: .utf8)
-    }
-
-    private func pasteAndAddKeyFromClipboard() {
-        guard let clipStr = NSPasteboard.general.string(forType: .string) else { return }
-        importRawAPIKeysString(clipStr)
-    }
-
-    private func importRawAPIKeysString(_ raw: String) {
-        let parts = raw
-            .components(separatedBy: CharacterSet(charactersIn: ",;\n\r\t "))
-            .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
-            .filter { !$0.isEmpty }
-        guard !parts.isEmpty else { return }
-
-        var s = storageManager.settings
-        for key in parts {
-            if !s.apiKeys.contains(key) {
-                s.apiKeys.append(key)
-            }
-        }
-        storageManager.settings = s
-        newAPIKeyInput = ""
-        keyRefreshTrigger = UUID()
-    }
-
-    private func importAPIKeysFromFilePanel() {
-        NSApp.activate(ignoringOtherApps: true)
-        let panel = NSOpenPanel()
-        panel.allowedContentTypes = [.plainText]
-        panel.allowsMultipleSelection = false
-        panel.canChooseDirectories = false
-        panel.canChooseFiles = true
-        guard panel.runModal() == .OK, let url = panel.url,
-              let content = try? String(contentsOf: url, encoding: .utf8) else { return }
-        importRawAPIKeysString(content)
-    }
-
-    private func exportAPIKeysToFilePanel() {
-        let keys = storageManager.settings.validAPIKeys
-        guard !keys.isEmpty else { return }
-        NSApp.activate(ignoringOtherApps: true)
-        let panel = NSSavePanel()
-        panel.allowedContentTypes = [.plainText]
-        panel.nameFieldStringValue = "SuperTrans-APIKeys.txt"
-        panel.canCreateDirectories = true
-        guard panel.runModal() == .OK, let url = panel.url else { return }
-        let joined = keys.joined(separator: "\n")
-        try? joined.write(to: url, atomically: true, encoding: .utf8)
     }
 
     private func addKeysFromInput() {
@@ -3500,33 +2250,6 @@ public struct SettingsView: View {
         }
     }
 
-    private func testSelectedModel() {
-        guard let firstKey = storageManager.settings.validAPIKeys.first else { return }
-        let model = storageManager.settings.selectedModel.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !model.isEmpty else { return }
-        isTestingSelectedModel = true
-        selectedModelTestStatus = nil
-        Task {
-            let result = await GeminiClient.shared.testAPIKey(firstKey, model: model)
-            let ok: Bool
-            if case .success = result {
-                ok = true
-            } else {
-                ok = false
-            }
-            await MainActor.run {
-                isTestingSelectedModel = false
-                selectedModelTestStatus = ok
-                keyRefreshTrigger = UUID()
-                DispatchQueue.main.asyncAfter(deadline: .now() + 2.5) {
-                    if selectedModelTestStatus == ok {
-                        selectedModelTestStatus = nil
-                    }
-                }
-            }
-        }
-    }
-
     private func testAllAPIKeys() {
         let keys = storageManager.settings.validAPIKeys
         guard !keys.isEmpty else { return }
@@ -3556,26 +2279,15 @@ public struct SettingsView: View {
                     metricRow(label: isVi ? "Tổng số bản dịch đang lưu" : "Total Stored Translations", value: "\(storageManager.items.count)")
                     metricRow(
                         label: isVi ? "Bản dịch đã ghim / Mẫu chuẩn đã dạy" : "Pinned / Verified Examples",
-                        value: "\(storageManager.items.filter { $0.isPinned }.count) / \(storageManager.items.filter { $0.isVerified }.count)",
-                        onTap: {
-                            stopShortcutRecording()
-                            selectedTab = .projects
-                        }
+                        value: "\(storageManager.items.filter { $0.isPinned }.count) / \(storageManager.items.filter { $0.isVerified }.count)"
                     )
                     metricRow(
                         label: isVi ? "Số Dự án & Thuật ngữ từ điển" : "Projects & Glossary Terms",
-                        value: "\(storageManager.projects.count) \(isVi ? "dự án" : "projects") · \(storageManager.projects.reduce(0) { $0 + $1.glossary.count }) \(isVi ? "từ" : "terms")",
-                        onTap: {
-                            stopShortcutRecording()
-                            selectedTab = .projects
-                        }
+                        value: "\(storageManager.projects.count) \(isVi ? "dự án" : "projects") · \(storageManager.projects.reduce(0) { $0 + $1.glossary.count }) \(isVi ? "từ" : "terms")"
                     )
                     metricRow(
                         label: isVi ? "Dung lượng sử dụng" : "Disk Space Used",
-                        value: calculateDiskUsageFormatted(),
-                        onTap: {
-                            NSWorkspace.shared.selectFile(nil, inFileViewerRootedAtPath: storageManager.baseDirectory.path)
-                        }
+                        value: calculateDiskUsageFormatted()
                     )
                 }
                 .padding(8)
@@ -3667,27 +2379,9 @@ public struct SettingsView: View {
                 VStack(spacing: 2) {
                     Text("SuperTrans")
                         .font(.system(size: 15, weight: .bold))
-                    HStack(spacing: 5) {
-                        Text("Version \(updateManager.currentVersion) (com.nhanqv.supertrans)")
-                            .font(.system(size: 11))
-                            .foregroundColor(.secondary)
-
-                        Button(action: {
-                            let info = "SuperTrans v\(updateManager.currentVersion) (com.nhanqv.supertrans) — macOS \(ProcessInfo.processInfo.operatingSystemVersionString)"
-                            NSPasteboard.general.clearContents()
-                            NSPasteboard.general.setString(info, forType: .string)
-                            didCopyVersionInfoFeedback = true
-                            DispatchQueue.main.asyncAfter(deadline: .now() + 1.4) {
-                                didCopyVersionInfoFeedback = false
-                            }
-                        }) {
-                            Image(systemName: didCopyVersionInfoFeedback ? "checkmark" : "doc.on.doc")
-                                .font(.system(size: 9.5))
-                                .foregroundColor(didCopyVersionInfoFeedback ? .green : .secondary)
-                        }
-                        .buttonStyle(.plain)
-                        .help(isVi ? "Sao chép thông tin phiên bản" : "Copy version info")
-                    }
+                    Text("Version \(updateManager.currentVersion) (com.nhanqv.supertrans)")
+                        .font(.system(size: 11))
+                        .foregroundColor(.secondary)
                 }
 
                 // Check for Updates Section (SuperClip style)
@@ -3723,25 +2417,6 @@ public struct SettingsView: View {
                     }) {
                         HStack(spacing: 4) {
                             Text("nhanqv-ai/SuperTrans")
-                                .font(.system(size: 11.5, weight: .medium))
-                            Image(systemName: "arrow.up.forward.square")
-                                .font(.system(size: 10))
-                        }
-                        .foregroundColor(.accentColor)
-                    }
-                    .buttonStyle(.plain)
-
-                    Text("·")
-                        .font(.system(size: 11.5))
-                        .foregroundColor(.secondary)
-
-                    Button(action: {
-                        if let url = URL(string: "https://github.com/nhanqv-ai/SuperTrans/releases") {
-                            NSWorkspace.shared.open(url)
-                        }
-                    }) {
-                        HStack(spacing: 3) {
-                            Text(isVi ? "Nhật ký phiên bản" : "Releases")
                                 .font(.system(size: 11.5, weight: .medium))
                             Image(systemName: "arrow.up.forward.square")
                                 .font(.system(size: 10))
@@ -3866,32 +2541,15 @@ public struct SettingsView: View {
         }
     }
 
-    @ViewBuilder
-    private func metricRow(label: String, value: String, onTap: (() -> Void)? = nil) -> some View {
-        if let onTap = onTap {
-            Button(action: onTap) {
-                HStack {
-                    Text(label)
-                        .font(.system(size: 11.5))
-                        .foregroundColor(.secondary)
-                    Spacer()
-                    Text(value)
-                        .font(.system(size: 11.5, weight: .semibold, design: .monospaced))
-                        .foregroundColor(.accentColor)
-                }
-                .contentShape(Rectangle())
-            }
-            .buttonStyle(.plain)
-        } else {
-            HStack {
-                Text(label)
-                    .font(.system(size: 11.5))
-                    .foregroundColor(.secondary)
-                Spacer()
-                Text(value)
-                    .font(.system(size: 11.5, weight: .semibold, design: .monospaced))
-                    .foregroundColor(.primary)
-            }
+    private func metricRow(label: String, value: String) -> some View {
+        HStack {
+            Text(label)
+                .font(.system(size: 11.5))
+                .foregroundColor(.secondary)
+            Spacer()
+            Text(value)
+                .font(.system(size: 11.5, weight: .semibold, design: .monospaced))
+                .foregroundColor(.primary)
         }
     }
 
